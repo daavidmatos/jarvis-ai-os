@@ -4,6 +4,7 @@ from uuid import UUID
 from jarvis.agents.manager import AgentManager
 from jarvis.config import settings
 from jarvis.db import Database
+from jarvis.local_assistant import LocalAssistant, LocalAssistantError, google_places
 from jarvis.memory import MemoryEngine
 from jarvis.mission_director import MissionDirector
 from jarvis.mission_executor import MissionExecutor
@@ -49,6 +50,7 @@ class Orchestrator:
         self.strategic_advisor = StrategicAdvisor(self.router)
         self.mission_director = MissionDirector(self.router)
         self.mission_executor = MissionExecutor(self.router, self.tools)
+        self.local_assistant = LocalAssistant(self.router, google_places)
 
     async def _finalize_with_primary(
         self,
@@ -129,6 +131,71 @@ class Orchestrator:
     def _has_strategic_blocker(blockers: list[str]) -> bool:
         return any("recomendação estratégica" in b.lower() for b in blockers)
 
+    async def _local_response(
+        self,
+        sid: UUID,
+        message: str,
+        location: dict | None,
+    ) -> dict:
+        try:
+            result = await self.local_assistant.recommend(str(sid), message, location)
+        except LocalAssistantError as exc:
+            result = {
+                "message": str(exc),
+                "actions": [],
+                "provider": "google_places",
+                "model": None,
+            }
+        wid = self.db.create_workflow(
+            sid,
+            message,
+            {"type": "local_assistant", "location_supplied": bool(location)},
+        )
+        self.db.finish_workflow(
+            wid,
+            "completed",
+            {
+                "message": result.get("message"),
+                "recommended": result.get("recommended"),
+                "actions": result.get("actions", []),
+            },
+        )
+        return {
+            "workflow_id": wid,
+            "session_id": sid,
+            "status": "completed",
+            "message": result.get("message") or "",
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "sources": [],
+            "actions": result.get("actions", []),
+        }
+
+    def _navigation_response(self, sid: UUID, message: str) -> dict | None:
+        result = self.local_assistant.navigation(str(sid))
+        if not result:
+            return None
+        wid = self.db.create_workflow(
+            sid,
+            message,
+            {"type": "local_navigation"},
+        )
+        self.db.finish_workflow(
+            wid,
+            "completed",
+            {"message": result["message"], "actions": result.get("actions", [])},
+        )
+        return {
+            "workflow_id": wid,
+            "session_id": sid,
+            "status": "completed",
+            "message": result["message"],
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "sources": [],
+            "actions": result.get("actions", []),
+        }
+
     async def _mission_response(
         self,
         sid: UUID,
@@ -170,6 +237,7 @@ class Orchestrator:
                         "provider": "openai",
                         "model": None,
                         "sources": [],
+                        "actions": [],
                     }
 
             update = await self.mission_director.apply_followup(pending, message, context)
@@ -199,6 +267,7 @@ class Orchestrator:
                 "provider": update["provider"],
                 "model": update["model"],
                 "sources": [],
+                "actions": [],
             }
 
         if (
@@ -291,6 +360,7 @@ class Orchestrator:
                 "provider": proposal["provider"],
                 "model": proposal["model"],
                 "sources": [],
+                "actions": [],
             }
         return None
 
@@ -329,9 +399,15 @@ class Orchestrator:
             "provider": reply.provider,
             "model": reply.model,
             "sources": [],
+            "actions": [],
         }
 
-    async def handle(self, message: str, session_id: UUID | None = None):
+    async def handle(
+        self,
+        message: str,
+        session_id: UUID | None = None,
+        location: dict | None = None,
+    ):
         sid = self.db.create_session(session_id)
         self.db.add_message(sid, "user", message)
         memories = self.memory.context_text(message)
@@ -340,16 +416,36 @@ class Orchestrator:
             f"{m['role']}: {m['content']}" for m in history[:-1]
         )
         permissions = standing_permissions.context_text()
+        location_text = (
+            json.dumps(location, ensure_ascii=False)
+            if location
+            else "(not supplied)"
+        )
         context = (
             f"Relevant memory:\n{memories or '(none)'}\n\n"
             f"Recent conversation:\n{history_text or '(none)'}\n\n"
-            f"Standing permissions:\n{permissions}"
+            f"Standing permissions:\n{permissions}\n\n"
+            "Current device location (ephemeral; never memorize):\n"
+            f"{location_text}"
         )
 
+        # Explicit local discovery has priority over unrelated pending missions.
+        if self.local_assistant.looks_like_local_request(message):
+            local = await self._local_response(sid, message, location)
+            self.db.add_message(sid, "assistant", local["message"])
+            return local
+
+        # Mission approvals keep priority over a generic "sim" navigation follow-up.
         mission_response = await self._mission_response(sid, message, context)
         if mission_response is not None:
             self.db.add_message(sid, "assistant", mission_response["message"])
             return mission_response
+
+        if self.local_assistant.navigation_followup(message):
+            navigation = self._navigation_response(sid, message)
+            if navigation is not None:
+                self.db.add_message(sid, "assistant", navigation["message"])
+                return navigation
 
         # Normal single-turn workflow: planner always starts from the OpenAI primary brain.
         plan = await self.planner.create(message, context)
@@ -376,4 +472,5 @@ class Orchestrator:
             "provider": provider,
             "model": model,
             "sources": result.sources,
+            "actions": [],
         }
