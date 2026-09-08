@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     google_monitor_state_path: str = "~/.config/jarvis/google_monitor.json"
     gmail_pubsub_topic: str | None = None
     google_pubsub_webhook_secret: str | None = None
+    enable_google_monitoring: bool = True
+    google_monitor_interval_seconds: int = 43200
 
     # Optional dedicated search providers. OpenAI hosted web search remains available.
     tavily_api_key: str | None = None
