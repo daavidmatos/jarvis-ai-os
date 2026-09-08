@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any
 
 from jarvis.desktop_actions import DesktopActionPlanner
@@ -105,3 +106,10 @@ next action. No screenshot is available, so never claim visual details.""",
         ):
             return await self._desktop_single_edit(state, message)
         return await super().handle(session_id, message)
+
+    def get_workspace(self, session_id: str) -> dict[str, Any] | None:
+        state = universal_workspace_store.get(session_id)
+        if state and state.status == "active" and state.kind in {"design", "video_edit", "3d_scene"}:
+            state = self._desktop_refresh(state)
+            return asdict(state)
+        return super().get_workspace(session_id)
