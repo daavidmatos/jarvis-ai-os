@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from jarvis.browser_assistant import BrowserAssistant
 from jarvis.fast_chat import FastChat
 from jarvis.internet_assistant import InternetAssistant
 from jarvis.missions import mission_store
@@ -15,11 +16,9 @@ from jarvis.voice_persona import ensure_senhor
 class UniversalOrchestrator(CoreOrchestrator):
     """Core orchestrator with collaboration, live internet and low-latency chat routing.
 
-    Collaborative requests are routed before Mission mode. Explicit live-web requests
-    bypass the generic planner and always invoke the search tool. Ordinary conversation
-    skips the planner/agent DAG and uses a single primary-model call, while requests
-    needing other tools, local search, mobility, missions or external applications still
-    use the full orchestration stack.
+    Direct assistant utilities such as mobility, browser tabs and live research are
+    routed before sticky workspaces/missions. This prevents an old blocked task from
+    hijacking unrelated commands such as "abra uma nova guia" or "pesquise para mim".
     """
 
     def __init__(self, *args, **kwargs):
@@ -28,9 +27,35 @@ class UniversalOrchestrator(CoreOrchestrator):
         self.fast_chat = FastChat(self.router, self.db)
         self.internet = InternetAssistant(self.router, self.tools, self.db)
         self.mobility = MobilityAssistant(self.db)
+        self.browser = BrowserAssistant(self.db)
+
+    @staticmethod
+    def _mission_followup_like(message: str) -> bool:
+        """Return True only for text that plausibly continues an active mission.
+
+        Missions are durable, but they must not turn the whole chat into one giant
+        modal state. Explicit approvals, budgets and mission/campaign follow-ups stay
+        attached; ordinary conversation and assistant utilities remain independent.
+        """
+        text = " ".join(message.lower().strip().split())
+        exact = {
+            "ok", "sim", "pode", "pode sim", "aprovado", "aprovo", "continue",
+            "continua", "prossiga", "pode prosseguir", "pode executar",
+            "execute", "execute mesmo assim", "faça mesmo assim", "faca mesmo assim",
+        }
+        if text in exact:
+            return True
+        markers = (
+            "missão", "missao", "campanha", "orçamento", "orcamento", "budget",
+            "por dia", "por mês", "por mes", "r$", "reais", "bloqueio", "blocker",
+            "aprovar", "aprovação", "aprovacao", "prosseguir", "executar a missão",
+            "executar a missao", "essa missão", "essa missao", "essa campanha",
+        )
+        return any(marker in text for marker in markers)
 
     def _fast_chat_eligible(self, sid: UUID, message: str) -> bool:
-        if mission_store.latest_for_session(str(sid), active_only=True):
+        active_mission = mission_store.latest_for_session(str(sid), active_only=True)
+        if active_mission and self._mission_followup_like(message):
             return False
         if self.local_assistant.looks_like_local_request(message):
             return False
@@ -41,6 +66,8 @@ class UniversalOrchestrator(CoreOrchestrator):
         if self.internet.looks_like_request(message):
             return False
         if self.mobility.looks_like_request(message):
+            return False
+        if self.browser.looks_like_request(message):
             return False
 
         text = message.lower()
@@ -75,6 +102,11 @@ class UniversalOrchestrator(CoreOrchestrator):
             f"{location_text}"
         )
 
+    async def _record_direct(self, sid: UUID, message: str, result: dict) -> dict:
+        self.db.add_message(sid, "user", message)
+        self.db.add_message(sid, "assistant", result["message"])
+        return result
+
     async def handle(
         self,
         message: str,
@@ -83,19 +115,25 @@ class UniversalOrchestrator(CoreOrchestrator):
     ):
         # Resolve a stable session first so workspaces and normal dialogue persist.
         sid = self.db.create_session(session_id)
+
+        # Assistant utilities outrank stale collaborative/mission context.
+        if self.mobility.looks_like_request(message):
+            result = await self.mobility.handle(sid, message, location)
+            return await self._record_direct(sid, message, result)
+
+        if self.browser.looks_like_request(message):
+            result = await self.browser.handle(sid, message)
+            return await self._record_direct(sid, message, result)
+
+        if self.internet.looks_like_request(message):
+            self.db.add_message(sid, "user", message)
+            context = self._conversation_context(sid, message, location)
+            result = await self.internet.research(sid, message, context)
+            self.db.add_message(sid, "assistant", result["message"])
+            return result
+
         collaborative = await self.collaboration.handle_or_start(str(sid), message)
         if collaborative is None:
-            if self.mobility.looks_like_request(message):
-                self.db.add_message(sid, "user", message)
-                result = await self.mobility.handle(sid, message, location)
-                self.db.add_message(sid, "assistant", result["message"])
-                return result
-            if self.internet.looks_like_request(message):
-                self.db.add_message(sid, "user", message)
-                context = self._conversation_context(sid, message, location)
-                result = await self.internet.research(sid, message, context)
-                self.db.add_message(sid, "assistant", result["message"])
-                return result
             if self._fast_chat_eligible(sid, message):
                 self.db.add_message(sid, "user", message)
                 context = self._conversation_context(sid, message, location)
