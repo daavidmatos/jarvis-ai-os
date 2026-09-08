@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import asdict
 from typing import Any
 
 from desktop_companion.blender_ipc import BlenderIPC
@@ -16,7 +15,6 @@ class DesktopCompanion:
     def __init__(self, config: CompanionConfig):
         self.config = config
         self.blender = BlenderIPC()
-        self.pending_commands: dict[str, dict[str, Any]] = {}
         self._last_capture = 0.0
 
     def current_state(self) -> dict[str, Any]:
@@ -112,52 +110,7 @@ class DesktopCompanion:
             )
         )
 
-    async def _handle_command(self, ws, message: dict[str, Any]) -> None:
-        command_id = str(message.get("command_id") or "")
-        app = str(message.get("app") or "").strip().lower()
-        instruction = str(message.get("instruction") or "").strip()
-        if not command_id or not app or not instruction:
-            return
-        if app != "blender":
-            await self._send_result(
-                ws,
-                command_id,
-                ok=False,
-                error=(
-                    f"No structured write adapter is installed for {app}. "
-                    "JARVIS may inspect screenshots/state, but cannot safely edit this app yet."
-                ),
-            )
-            return
-        state = self.blender.state()
-        if not state.get("available"):
-            await self._send_result(
-                ws,
-                command_id,
-                ok=False,
-                error=str(state.get("reason") or "Blender add-on is not available."),
-            )
-            return
-        self.pending_commands[command_id] = message
-        await ws.send(
-            json.dumps(
-                {
-                    "type": "plan_request",
-                    "command_id": command_id,
-                    "app": "blender",
-                    "instruction": instruction,
-                    "state": state,
-                },
-                ensure_ascii=False,
-            )
-        )
-
-    async def _handle_plan_response(self, ws, message: dict[str, Any]) -> None:
-        command_id = str(message.get("command_id") or "")
-        pending = self.pending_commands.pop(command_id, None)
-        if not pending:
-            return
-        plan = message.get("plan") if isinstance(message.get("plan"), dict) else {}
+    async def _execute_blender_plan(self, ws, command_id: str, plan: dict[str, Any]) -> None:
         action = str(plan.get("action") or "unsupported")
         arguments = plan.get("arguments") if isinstance(plan.get("arguments"), dict) else {}
         if action == "unsupported":
@@ -182,6 +135,43 @@ class DesktopCompanion:
             error=None if result.get("ok") else str(result.get("error") or "Blender action failed"),
         )
 
+    async def _handle_command(self, ws, message: dict[str, Any]) -> None:
+        command_id = str(message.get("command_id") or "")
+        app = str(message.get("app") or "").strip().lower()
+        instruction = str(message.get("instruction") or "").strip()
+        plan = message.get("plan") if isinstance(message.get("plan"), dict) else None
+        if not command_id or not app or not instruction:
+            return
+        if app != "blender":
+            await self._send_result(
+                ws,
+                command_id,
+                ok=False,
+                error=(
+                    f"No structured write adapter is installed for {app}. "
+                    "JARVIS may inspect screenshots/state, but cannot safely edit this app yet."
+                ),
+            )
+            return
+        state = self.blender.state()
+        if not state.get("available"):
+            await self._send_result(
+                ws,
+                command_id,
+                ok=False,
+                error=str(state.get("reason") or "Blender add-on is not available."),
+            )
+            return
+        if plan is None:
+            await self._send_result(
+                ws,
+                command_id,
+                ok=False,
+                error="Server did not provide a structured allow-listed action plan.",
+            )
+            return
+        await self._execute_blender_plan(ws, command_id, plan)
+
     async def _receive_loop(self, ws) -> None:
         async for raw in ws:
             try:
@@ -191,8 +181,6 @@ class DesktopCompanion:
             kind = str(message.get("type") or "")
             if kind == "command":
                 await self._handle_command(ws, message)
-            elif kind == "plan_response":
-                await self._handle_plan_response(ws, message)
             elif kind == "ping":
                 await ws.send(json.dumps({"type": "pong"}))
 
