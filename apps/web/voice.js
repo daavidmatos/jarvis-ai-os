@@ -1,6 +1,7 @@
 (() => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const synth = window.speechSynthesis;
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   const inputEl = document.getElementById('input');
   const sendBtn = document.getElementById('send');
   const composer = document.querySelector('.composer');
@@ -8,11 +9,6 @@
   const messages = document.getElementById('messages');
   if (!inputEl || !sendBtn || !composer || !actions || !messages) return;
 
-  // -------------------------------------------------------------------------
-  // Terminal-first interface: the default surface should feel like a command
-  // console, not a dashboard full of cards. Workbenches/overlays remain available
-  // when a task genuinely needs a visual workspace.
-  // -------------------------------------------------------------------------
   const terminalStyle = document.createElement('style');
   terminalStyle.textContent = `
     :root{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace!important;background:#020504!important;color:#d8ffe3!important}
@@ -35,6 +31,8 @@
     .m.u{margin-left:0!important;color:#b7d7c0!important}
     .m.u::before{content:"> ";color:#7dff9f!important;font-weight:700!important}
     .m.a::before{content:"JARVIS> ";color:#7dff9f!important;font-weight:700!important}
+    .m.jarvis-progress{color:#7ea68a!important;font-style:italic!important}
+    .m.jarvis-progress::before{content:"JARVIS> ";color:#6bb883!important}
     .m>div:first-child{display:inline!important}
     .meta{display:none!important}
     .msgactions{display:flex!important;gap:6px!important;margin:8px 0 3px 0!important;padding-left:0!important}
@@ -66,13 +64,17 @@
   let voiceArmed = false;
   let listening = false;
   let recognition = null;
-  let activeUtterance = null;
-  const speechQueue = [];
+  let audioCtx = null;
+  let activeSource = null;
+  let naturalBusy = false;
+  let progressAbort = null;
+  const naturalQueue = [];
 
   const voiceBtn = document.createElement('button');
   voiceBtn.className = 'ghost';
   voiceBtn.id = 'voiceBtn';
   voiceBtn.type = 'button';
+  voiceBtn.title = 'Voz natural em português brasileiro';
   const micBtn = document.createElement('button');
   micBtn.className = 'ghost';
   micBtn.id = 'micBtn';
@@ -82,8 +84,6 @@
   composer.insertBefore(micBtn, sendBtn);
   actions.insertBefore(voiceBtn, actions.firstChild);
 
-  // Uber commands need an ephemeral device location before the request reaches
-  // the backend. This never turns the coordinates into long-term memory.
   const originalLocalIntent = window.isLocalIntent;
   if (typeof originalLocalIntent === 'function') {
     window.isLocalIntent = text => {
@@ -97,14 +97,6 @@
     voiceBtn.classList.toggle('active', voiceEnabled);
   }
   updateVoiceButton();
-
-  function preferredVoice() {
-    if (!synth) return null;
-    const voices = synth.getVoices() || [];
-    const pt = voices.filter(v => /^pt(-|_)?BR/i.test(v.lang) || /^pt/i.test(v.lang));
-    const preferredNames = ['felipe', 'daniel', 'joão', 'joao', 'thiago', 'antonio', 'antônio', 'ricardo'];
-    return pt.find(v => preferredNames.some(n => v.name.toLowerCase().includes(n))) || pt[0] || voices[0] || null;
-  }
 
   function cleanForSpeech(text) {
     return String(text || '')
@@ -121,69 +113,124 @@
     return `Senhor, ${clean}`;
   }
 
-  function speechChunks(text) {
-    const clean = cleanForSpeech(text);
-    if (!clean) return [];
-    const sentences = clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [clean];
-    const chunks = [];
-    let current = '';
-    for (const sentence of sentences) {
-      const next = (current + ' ' + sentence.trim()).trim();
-      if (next.length > 210 && current) {
-        chunks.push(current);
-        current = sentence.trim();
-      } else {
-        current = next;
-      }
-    }
-    if (current) chunks.push(current);
-    return chunks;
+  function exactBrazilianVoice() {
+    if (!synth) return null;
+    const voices = synth.getVoices() || [];
+    return voices.find(v => /^pt[-_]BR$/i.test(v.lang)) || null;
+  }
+
+  function ensureAudioContext() {
+    if (!AudioContextCtor) return null;
+    if (!audioCtx) audioCtx = new AudioContextCtor();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    return audioCtx;
   }
 
   function unlockVoice() {
     voiceArmed = true;
-    if (!synth) return;
-    try { synth.resume(); } catch (_) {}
-  }
-
-  function speakNext() {
-    if (!voiceEnabled || !voiceArmed || !synth || activeUtterance || !speechQueue.length) return;
-    const text = speechQueue.shift();
-    if (!text) return speakNext();
-    const utterance = new SpeechSynthesisUtterance(text);
-    activeUtterance = utterance; // keep a strong reference for Safari/iOS
-    utterance.lang = 'pt-BR';
-    utterance.rate = 1.02;
-    utterance.pitch = 0.9;
-    const voice = preferredVoice();
-    if (voice) utterance.voice = voice;
-    utterance.onend = utterance.onerror = () => {
-      activeUtterance = null;
-      setTimeout(speakNext, 20);
-    };
-    try {
-      synth.resume();
-      synth.speak(utterance);
-    } catch (_) {
-      activeUtterance = null;
+    ensureAudioContext();
+    if (synth) {
+      try { synth.resume(); } catch (_) {}
     }
   }
 
-  function speak(text, { interrupt = false } = {}) {
+  function fallbackSpeak(text) {
     if (!voiceEnabled || !voiceArmed || !synth) return;
     const clean = cleanForSpeech(text);
-    if (!clean || /^erro:/i.test(clean) || /processando|atualizando workbench/i.test(clean)) return;
-    if (interrupt) {
-      speechQueue.length = 0;
-      activeUtterance = null;
-      try { synth.cancel(); } catch (_) {}
+    if (!clean) return;
+    try { synth.cancel(); } catch (_) {}
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.lang = 'pt-BR';
+    utterance.rate = 0.94;
+    utterance.pitch = 0.92;
+    const ptBR = exactBrazilianVoice();
+    if (ptBR) utterance.voice = ptBR;
+    try { synth.speak(utterance); } catch (_) {}
+  }
+
+  function base64ToBytes(value) {
+    const raw = atob(value);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+
+  async function fetchNaturalBuffer(text, progress, signal) {
+    const response = await fetch('/v1/tools/voice.synthesize/execute', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({args: {text, progress}}),
+      signal,
+    });
+    if (!response.ok) throw new Error(`voice http ${response.status}`);
+    const payload = await response.json();
+    if (!payload.ok || !payload.result?.audio_base64) throw new Error(payload.error || 'voice unavailable');
+    const ctx = ensureAudioContext();
+    if (!ctx) throw new Error('Web Audio unavailable');
+    const bytes = base64ToBytes(payload.result.audio_base64);
+    const copied = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return await ctx.decodeAudioData(copied);
+  }
+
+  function stopNaturalAudio() {
+    if (progressAbort) {
+      try { progressAbort.abort(); } catch (_) {}
+      progressAbort = null;
     }
-    speechQueue.push(...speechChunks(clean));
-    speakNext();
+    naturalQueue.length = 0;
+    if (activeSource) {
+      try { activeSource.stop(); } catch (_) {}
+      activeSource = null;
+    }
+    naturalBusy = false;
+  }
+
+  async function drainNaturalQueue() {
+    if (naturalBusy || !naturalQueue.length || !voiceEnabled || !voiceArmed) return;
+    naturalBusy = true;
+    const item = naturalQueue.shift();
+    let controller = null;
+    if (item.progress) {
+      controller = new AbortController();
+      progressAbort = controller;
+    }
+    try {
+      const buffer = await fetchNaturalBuffer(item.text, item.progress, controller?.signal);
+      if (!voiceEnabled || !voiceArmed) return;
+      const ctx = ensureAudioContext();
+      if (!ctx) throw new Error('audio context unavailable');
+      await new Promise(resolve => {
+        const source = ctx.createBufferSource();
+        activeSource = source;
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.onended = () => {
+          if (activeSource === source) activeSource = null;
+          resolve();
+        };
+        source.start(0);
+      });
+    } catch (error) {
+      if (error?.name !== 'AbortError') fallbackSpeak(item.text);
+    } finally {
+      if (controller && progressAbort === controller) progressAbort = null;
+      naturalBusy = false;
+      setTimeout(drainNaturalQueue, 10);
+    }
+  }
+
+  function speak(text, {interrupt = false, progress = false} = {}) {
+    if (!voiceEnabled || !voiceArmed) return;
+    const clean = cleanForSpeech(text);
+    if (!clean || /^erro:/i.test(clean) || /processando|atualizando workbench/i.test(clean)) return;
+    if (interrupt) stopNaturalAudio();
+    naturalQueue.push({text: clean, progress});
+    drainNaturalQueue();
   }
 
   if (synth) {
-    synth.addEventListener?.('voiceschanged', preferredVoice);
+    synth.addEventListener?.('voiceschanged', exactBrazilianVoice);
     try { synth.getVoices(); } catch (_) {}
   }
 
@@ -202,19 +249,57 @@
       messages.scrollTop = messages.scrollHeight;
       if (index < length) {
         const char = text[index - 1] || '';
-        const delay = /[.!?]/.test(char) ? 55 : /[,;:]/.test(char) ? 30 : 16;
+        const delay = /[.!?]/.test(char) ? 60 : /[,;:]/.test(char) ? 34 : 17;
         setTimeout(step, delay);
       }
     };
-    setTimeout(step, 30);
+    setTimeout(step, 20);
   }
 
-  // Every assistant response is rendered progressively and spoken. This keeps
-  // tool, mission, local-search and collaborative replies consistent with chat.
+  let progressNode = null;
+  function clearProgress({abortVoice = true} = {}) {
+    if (progressNode?.isConnected) progressNode.remove();
+    progressNode = null;
+    if (abortVoice && progressAbort) {
+      try { progressAbort.abort(); } catch (_) {}
+      progressAbort = null;
+    }
+  }
+
+  function progressMessage(text) {
+    const t = String(text || '').toLowerCase();
+    if (!t.trim()) return null;
+    if (/pesquis|procure|busque|encontre|internet|web/.test(t)) return 'Pesquisando, senhor. Um instante.';
+    if (/analise|analisa|avali|estatíst|relatório|compare/.test(t)) return 'Analisando, senhor. Um instante.';
+    if (/uber|corrida/.test(t)) return 'Certo, senhor. Preparando a corrida.';
+    if (/abra|abrir|navegador|guia/.test(t)) return 'Certo, senhor. Abrindo.';
+    if (/crie|criar|figma|photoshop|illustrator|blender|after effects|premiere|campanha/.test(t)) return 'Entendido, senhor. Inicializando.';
+    if (/gmail|email|e-mail|calend|agenda|trello|planilha|documento|monitore|monitorar|execute|publique/.test(t)) return 'Certo, senhor. Processando.';
+    return null;
+  }
+
+  function showProgress(text) {
+    const status = progressMessage(text);
+    if (!status) return;
+    clearProgress();
+    const node = document.createElement('div');
+    node.className = 'm a jarvis-progress';
+    node.dataset.jarvisProgress = '1';
+    const body = document.createElement('div');
+    body.textContent = status;
+    node.appendChild(body);
+    messages.appendChild(node);
+    progressNode = node;
+    messages.scrollTop = messages.scrollHeight;
+    speak(status, {interrupt: true, progress: true});
+  }
+
   const observer = new MutationObserver(mutations => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement) || !node.classList.contains('a')) continue;
+        if (node.dataset.jarvisProgress === '1') continue;
+        clearProgress({abortVoice: true});
         const body = node.firstElementChild;
         if (!body) continue;
         const original = body.textContent || '';
@@ -225,7 +310,7 @@
       }
     }
   });
-  observer.observe(messages, { childList: true });
+  observer.observe(messages, {childList: true});
 
   function setListening(on) {
     listening = on;
@@ -242,10 +327,9 @@
 
   function startRecognition() {
     unlockVoice();
+    stopNaturalAudio();
     if (synth) {
       try { synth.cancel(); } catch (_) {}
-      activeUtterance = null;
-      speechQueue.length = 0;
     }
     if (!SpeechRecognition) {
       if (typeof window.add === 'function') window.add('A transcrição de voz não está disponível neste navegador. No iPhone, abra o JARVIS diretamente no Safari e verifique se a Siri está ativada.', 'a');
@@ -272,7 +356,7 @@
         else interim += text;
       }
       inputEl.value = (finalText || interim).trim();
-      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('input', {bubbles: true}));
     };
     recognition.onerror = event => {
       setListening(false);
@@ -281,15 +365,9 @@
     recognition.onend = () => {
       setListening(false);
       const text = inputEl.value.trim();
-      if (text && finalText.trim()) {
-        setTimeout(() => sendBtn.click(), 120);
-      }
+      if (text && finalText.trim()) setTimeout(() => sendBtn.click(), 120);
     };
-    try {
-      recognition.start();
-    } catch (_) {
-      setListening(false);
-    }
+    try { recognition.start(); } catch (_) { setListening(false); }
   }
 
   micBtn.addEventListener('click', startRecognition);
@@ -297,21 +375,26 @@
     unlockVoice();
     voiceEnabled = !voiceEnabled;
     localStorage.setItem('jarvis.voice.enabled', String(voiceEnabled));
-    if (!voiceEnabled && synth) {
-      speechQueue.length = 0;
-      activeUtterance = null;
-      synth.cancel();
+    if (!voiceEnabled) {
+      stopNaturalAudio();
+      if (synth) try { synth.cancel(); } catch (_) {}
     }
     updateVoiceButton();
-    if (voiceEnabled) speak('Voz ativada, senhor.', { interrupt: true });
+    if (voiceEnabled) speak('Voz natural ativada, senhor.', {interrupt: true, progress: true});
   });
 
-  // Explicit user gestures arm iOS speech synthesis before the asynchronous model
-  // response arrives. This is the critical step for reliable Safari playback.
-  sendBtn.addEventListener('pointerdown', unlockVoice, true);
-  sendBtn.addEventListener('click', unlockVoice, true);
-  inputEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) unlockVoice();
+  // Add an immediate operational acknowledgement before the slower network/model
+  // path begins. Capture phase ensures we read the command before the app clears it.
+  sendBtn.addEventListener('click', () => {
+    unlockVoice();
+    showProgress(inputEl.value);
   }, true);
-  document.addEventListener('pointerdown', unlockVoice, { once: true, capture: true });
+  sendBtn.addEventListener('pointerdown', unlockVoice, true);
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      unlockVoice();
+      showProgress(inputEl.value);
+    }
+  }, true);
+  document.addEventListener('pointerdown', unlockVoice, {once: true, capture: true});
 })();
