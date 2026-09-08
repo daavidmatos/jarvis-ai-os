@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from jarvis.auth import OwnerAccessMiddleware
 from jarvis.config import settings
 from jarvis.desktop_bridge import desktop_bridge
 from jarvis.events import ProactiveEventService
@@ -33,6 +34,7 @@ app = FastAPI(
     version="0.7.0",
     description="OpenAI-first autonomous and collaborative personal AI operating system",
 )
+app.add_middleware(OwnerAccessMiddleware)
 jarvis = Orchestrator()
 events = ProactiveEventService(jarvis.db)
 google_monitor = GoogleMonitoringService(events)
