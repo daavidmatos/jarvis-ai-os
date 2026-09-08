@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 bl_info = {
     "name": "JARVIS Desktop Bridge",
     "author": "JARVIS AI OS",
@@ -7,8 +9,6 @@ bl_info = {
     "description": "Expose bounded Blender scene state and execute allow-listed JARVIS actions",
     "category": "System",
 }
-
-from __future__ import annotations
 
 import json
 import math
@@ -230,7 +230,7 @@ def _read_new_commands() -> list[dict[str, Any]]:
     return rows
 
 
-def _timer() -> float:
+def _timer():
     if not _running:
         return None
     for command in _read_new_commands():
