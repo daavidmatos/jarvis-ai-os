@@ -20,29 +20,48 @@ class MobilityAssistant:
 
     @staticmethod
     def looks_like_request(message: str) -> bool:
-        text = message.lower().strip()
+        text = re.sub(r"\s+", " ", message.lower().strip())
         if "uber" not in text:
             return False
-        verbs = (
-            "peça", "peca", "pedir", "pede", "chame", "chama", "chamar",
-            "solicite", "solicitar", "corrida", "me leve", "ir para", "ir pro",
-            "ir pra", "quero ir",
+
+        # Speech transcription frequently changes the imperative "peça" into
+        # first-person forms such as "peço". Treat common natural rider phrases as
+        # one intent instead of falling back to generic LLM chat.
+        action_markers = (
+            "peça", "peca", "peço", "peco", "pedir", "pede", "pedi um uber",
+            "chame", "chama", "chamar", "me chama", "me chame",
+            "solicite", "solicitar", "solicita", "manda um uber", "mande um uber",
+            "quero um uber", "preciso de um uber", "preciso dum uber",
+            "corrida", "me leve", "me leva", "levar me", "leve me",
+            "ir para", "ir pro", "ir pra", "quero ir", "vou para", "vou pro", "vou pra",
         )
-        return any(v in text for v in verbs)
+        if any(marker in text for marker in action_markers):
+            return True
+
+        # If Uber is mentioned together with a clear destination preposition, the
+        # user's intent is operational enough to route to mobility even when the
+        # speech recognizer omitted the exact request verb.
+        return bool(re.search(r"\buber\b.*\b(?:para|pra|pro|ao|à)\b\s+\S+", text, re.I))
 
     @staticmethod
-    def _destination(message: str) -> str | None:
+    def _clean_destination(value: str) -> str | None:
+        value = value.strip(" .,!?:;\"'")
+        value = re.sub(r"^(?:o|a|os|as)\s+", "", value, flags=re.I)
+        return value if len(value) >= 2 else None
+
+    @classmethod
+    def _destination(cls, message: str) -> str | None:
         text = re.sub(r"\s+", " ", message.strip())
         patterns = (
             r"(?:para|pra)\s+ir\s+(?:para|pro|pra|ao|à)\s+(.+)$",
-            r"(?:quero\s+ir|me\s+leve|levar\s+me|leve\s+me)\s+(?:para|pro|pra|ao|à)\s+(.+)$",
+            r"(?:quero\s+ir|me\s+leve|me\s+leva|levar\s+me|leve\s+me)\s+(?:para|pro|pra|ao|à)\s+(.+)$",
             r"(?:uber|corrida).*?\s(?:para|pro|pra|ao|à)\s+(.+)$",
         )
         for pattern in patterns:
             match = re.search(pattern, text, re.I)
             if match:
-                value = match.group(1).strip(" .,!?:;\"'")
-                if len(value) >= 2:
+                value = cls._clean_destination(match.group(1))
+                if value:
                     return value
         return None
 
