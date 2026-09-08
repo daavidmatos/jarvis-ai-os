@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # OpenAI is the mandatory primary cognition layer.
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6"
+    openai_image_model: str = "gpt-image-2"
     primary_provider: str = "openai"
 
     # Optional specialist providers. The router may delegate automatically.
@@ -28,8 +29,24 @@ class Settings(BaseSettings):
     google_monitor_state_path: str = "~/.config/jarvis/google_monitor.json"
     gmail_pubsub_topic: str | None = None
     google_pubsub_webhook_secret: str | None = None
-    enable_google_monitoring: bool = True
-    google_monitor_interval_seconds: int = 43200
+
+    # Google Ads uses the same OAuth identity plus a developer token/customer IDs.
+    google_ads_developer_token: str | None = None
+    google_ads_customer_id: str | None = None
+    google_ads_login_customer_id: str | None = None
+    google_ads_api_version: str = "v25"
+
+    # Meta / Instagram Graph API.
+    meta_graph_version: str = "v24.0"
+    meta_access_token: str | None = None
+    meta_instagram_user_id: str | None = None
+    meta_app_secret: str | None = None
+    meta_webhook_verify_token: str | None = None
+
+    # Optional Fuel business API contract. The Lovable app can expose these endpoints later.
+    fuel_api_base_url: str | None = None
+    fuel_api_token: str | None = None
+    fuel_webhook_secret: str | None = None
 
     # Optional dedicated search providers. OpenAI hosted web search remains available.
     tavily_api_key: str | None = None

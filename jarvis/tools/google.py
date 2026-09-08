@@ -50,6 +50,7 @@ class GmailSendTool(Tool):
     description = "Send an email through the connected Gmail account. External side effect."
     risk = RiskLevel.HIGH
     requires_approval = True
+    mission_permission = "external_messages"
 
     async def run(self, to: str, subject: str, body: str):
         return await google_workspace.gmail_send(to, subject, body)
@@ -69,6 +70,7 @@ class CalendarCreateTool(Tool):
     description = "Create a Google Calendar event and optionally invite attendees. External side effect."
     risk = RiskLevel.HIGH
     requires_approval = True
+    mission_permission = "external_messages"
 
     async def run(
         self,
