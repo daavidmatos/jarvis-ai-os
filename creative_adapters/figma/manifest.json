@@ -1,0 +1,13 @@
+{
+  "name": "JARVIS Creative Bridge",
+  "id": "jarvis-ai-os-creative-bridge",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "Private JARVIS installations use a user-configured HTTPS/WSS server address. Restrict this domain before publishing the plugin."
+  }
+}
