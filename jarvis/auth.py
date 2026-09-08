@@ -81,8 +81,8 @@ class OwnerAuth:
             raise RuntimeError("Owner authentication is not configured")
         now = int(now or time.time())
         expires = now + settings.jarvis_session_days * 24 * 3600
-        payload = f"v1.{expires}".encode("utf-8")
-        sig = hmac.new(self._key(), payload, hashlib.sha256).digest()
+        payload = f"v2.{expires}".encode("utf-8")
+        sig = hmac.new(self._key(), payload, hashlib.sha256).hexdigest().encode("ascii")
         raw = payload + b"." + sig
         return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
@@ -92,11 +92,18 @@ class OwnerAuth:
         try:
             padding = "=" * (-len(token) % 4)
             raw = base64.urlsafe_b64decode(token + padding)
-            payload, supplied_sig = raw.rsplit(b".", 1)
+            # Python's permissive base64 decoder can accept non-canonical trailing
+            # characters that decode to the same bytes. Reject those aliases so a
+            # modified cookie can never verify as the original token.
+            canonical = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+            if not secrets.compare_digest(canonical, token):
+                return False
+            payload, supplied_sig_hex = raw.rsplit(b".", 1)
             version, expires_text = payload.decode("utf-8").split(".", 1)
-            if version != "v1":
+            if version != "v2":
                 return False
             expires = int(expires_text)
+            supplied_sig = bytes.fromhex(supplied_sig_hex.decode("ascii"))
         except (ValueError, UnicodeDecodeError):
             return False
         expected_sig = hmac.new(self._key(), payload, hashlib.sha256).digest()
