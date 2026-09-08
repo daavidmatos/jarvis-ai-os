@@ -39,18 +39,25 @@ class OpenAIProvider(LLMProvider):
         code, raw_message = self._upstream_error(response)
         raw_message = (raw_message or "").strip().replace("\n", " ")[:320]
 
-        if status in {401, 403}:
+        if code == "credit_balance_exhausted":
             message = (
-                "A OpenAI recusou a credencial da API ou as permissões do projeto. "
-                "Verifique a OPENAI_API_KEY configurada no servidor."
+                "O saldo de créditos da API da OpenAI acabou. "
+                "Adicione créditos no Billing da OpenAI Platform e tente novamente após o saldo atualizar. "
+                "A assinatura do ChatGPT é separada da API."
             )
-            api_status = 502
-        elif status == 429 and code == "insufficient_quota":
+            api_status = 429
+        elif code == "insufficient_quota":
             message = (
                 "A API da OpenAI está sem cota/créditos de faturamento. "
                 "A assinatura do ChatGPT é separada da API; configure billing/créditos na OpenAI Platform."
             )
             api_status = 429
+        elif status in {401, 403}:
+            message = (
+                "A OpenAI recusou a credencial da API ou as permissões do projeto. "
+                "Verifique a OPENAI_API_KEY configurada no servidor."
+            )
+            api_status = 502
         elif status == 429:
             message = "A API da OpenAI atingiu um limite temporário de uso. Tente novamente em instantes."
             api_status = 429
