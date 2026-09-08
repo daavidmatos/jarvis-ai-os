@@ -11,8 +11,10 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
 
     # OpenAI is the mandatory primary cognition layer.
+    # Use the canonical API model ID here. The short `gpt-5.6` name is an alias,
+    # while the Models retrieve endpoint validates canonical IDs.
     openai_api_key: str | None = None
-    openai_model: str = "gpt-5.6"
+    openai_model: str = "gpt-5.6-sol"
     openai_image_model: str = "gpt-image-2"
     primary_provider: str = "openai"
 
