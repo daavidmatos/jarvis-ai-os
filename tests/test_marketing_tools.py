@@ -37,7 +37,8 @@ def test_integration_status_endpoint():
     response = client.get("/v1/integrations/status")
     assert response.status_code == 200
     data = response.json()
-    assert set(data) == {"google_workspace", "google_ads", "instagram", "fuel"}
+    assert set(data) == {"google_workspace", "places", "google_ads", "instagram", "fuel"}
+    assert "configured" in data["places"]
 
 
 def test_meta_webhook_ingests_event_without_signature_when_secret_unset(monkeypatch):

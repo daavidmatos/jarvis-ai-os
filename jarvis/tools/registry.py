@@ -17,6 +17,7 @@ from jarvis.tools.google import (
     GmailSendTool,
     GoogleStatusTool,
 )
+from jarvis.tools.local import PlacesSearchTool, PlacesStatusTool
 from jarvis.tools.marketing import (
     CreativeImageGenerateTool,
     FuelCreateCouponTool,
@@ -44,6 +45,8 @@ class ToolRegistry:
             WebFetchTool(),
             WebSearchTool(),
             TimeTool(),
+            PlacesStatusTool(),
+            PlacesSearchTool(),
             GoogleStatusTool(),
             GmailSearchTool(),
             GmailReadTool(),

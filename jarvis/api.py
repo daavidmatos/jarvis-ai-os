@@ -16,6 +16,7 @@ from jarvis.google_workspace import GoogleWorkspaceError, google_workspace
 from jarvis.integrations.fuel import fuel_business
 from jarvis.integrations.google_ads import google_ads
 from jarvis.integrations.meta import instagram
+from jarvis.local_assistant import google_places
 from jarvis.missions import MissionStatus, mission_store
 from jarvis.monitoring import GoogleMonitoringService
 from jarvis.orchestrator import Orchestrator
@@ -27,8 +28,8 @@ from jarvis.setup import setup_service
 
 app = FastAPI(
     title="JARVIS AI OS",
-    version="0.5.0",
-    description="OpenAI-first autonomous personal AI orchestration and mission system",
+    version="0.6.0",
+    description="OpenAI-first autonomous personal AI orchestration, missions and mobile assistant",
 )
 jarvis = Orchestrator()
 events = ProactiveEventService(jarvis.db)
@@ -53,13 +54,14 @@ def setup_status_payload():
     specialists = [m for m in catalog if m["role"] == "specialist"]
     return {
         "ready": bool(primary and primary["available"]),
-        "version": "0.5.0",
+        "version": "0.6.0",
         "primary": primary,
         "specialists": specialists,
         "autonomous_routing": settings.autonomous_routing,
         "autonomy_enabled": settings.enable_autonomy,
         "autonomy_scope": "mission_envelopes_plus_low_and_medium_risk_tools",
         "google_workspace": google_workspace.status(),
+        "places": google_places.status(),
         "instagram": instagram.status(),
         "google_ads": google_ads.status(),
         "fuel": fuel_business.status(),
@@ -71,10 +73,11 @@ def health():
     status = setup_status_payload()
     return {
         "status": "ok",
-        "version": "0.5.0",
+        "version": "0.6.0",
         "ready": status["ready"],
         "primary_provider": "openai",
         "google_connected": status["google_workspace"]["connected"],
+        "places_configured": status["places"]["configured"],
     }
 
 
@@ -117,6 +120,11 @@ def disconnect_provider(provider: str):
 @app.get("/v1/integrations/google/status")
 def google_status():
     return google_workspace.status()
+
+
+@app.get("/v1/integrations/places/status")
+def places_status():
+    return google_places.status()
 
 
 @app.get("/v1/integrations/google/connect")
@@ -207,6 +215,7 @@ async def google_calendar_webhook(request: Request):
 def integrations_status():
     return {
         "google_workspace": google_workspace.status(),
+        "places": google_places.status(),
         "google_ads": google_ads.status(),
         "instagram": instagram.status(),
         "fuel": fuel_business.status(),
@@ -397,7 +406,11 @@ def generated_asset(filename: str):
 @app.post("/v1/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     try:
-        r = await jarvis.handle(req.message, req.session_id)
+        r = await jarvis.handle(
+            req.message,
+            req.session_id,
+            req.location.model_dump() if req.location else None,
+        )
     except PrimaryAIUnavailable as exc:
         raise HTTPException(
             status_code=503,
@@ -459,8 +472,9 @@ async def ws(ws: WebSocket):
                 await ws.send_json({"type": "error", "message": "message is required"})
                 continue
             await ws.send_json({"type": "status", "status": "thinking"})
+            location = data.get("location") if isinstance(data.get("location"), dict) else None
             try:
-                result = await jarvis.handle(msg, None)
+                result = await jarvis.handle(msg, None, location)
             except PrimaryAIUnavailable as exc:
                 await ws.send_json(
                     {
