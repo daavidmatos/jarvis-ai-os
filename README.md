@@ -1,50 +1,64 @@
-# JARVIS AI OS v0.2
+# JARVIS AI OS v0.3
 
-Executable MVP of a provider-agnostic personal AI orchestration system.
+OpenAI-first personal AI orchestration system with autonomous model and tool routing.
+
+## Core behavior
+
+JARVIS now has a fixed cognitive hierarchy:
+
+1. **OpenAI is the primary brain** for planning and general reasoning.
+2. JARVIS decomposes the user's request into tasks.
+3. The Model Router automatically decides whether a task stays on OpenAI or is delegated to an available specialist (Anthropic/Claude or Google/Gemini).
+4. Agents may call allowed LOW/MEDIUM-risk tools autonomously.
+5. HIGH-risk side effects remain approval-gated; CRITICAL actions remain blocked.
+6. When a specialist is used, OpenAI can synthesize the final user-facing answer.
+
+The user does **not** choose a provider for each prompt.
+
+## First run
+
+```bash
+git pull
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m uvicorn jarvis.api:app --reload --port 8000
+```
+
+Open:
+
+```text
+http://localhost:8000
+```
+
+On the first run, the interface asks for an **OpenAI API key once**. It validates the key and stores it locally in:
+
+```text
+~/.config/jarvis/secrets.json
+```
+
+with restrictive filesystem permissions. The key is not committed to Git. Environment variables remain supported as an override for servers/containers.
+
+After the one-time setup, OpenAI is used automatically whenever JARVIS starts.
+
+## Optional specialist AIs
+
+Claude and Gemini are optional. Configure them once through the same setup interface. If present, the router may delegate tasks automatically according to capability/fit. If absent, OpenAI handles those tasks itself.
 
 ## Current capabilities
 
-- Web chat UI and FastAPI API
-- Persistent conversations, workflows, tasks, memory and audit log
-- Planner that creates structured task plans
-- Model Router with OpenAI, Anthropic, Google and deterministic local fallback
+- FastAPI API and browser chat UI
+- OpenAI Responses API as primary cognition
+- autonomous provider routing
 - Research, Coding, Creative, Data, Operations and General agents
-- Tools: safe calculator, file read/write sandbox, public web fetch, optional live web search, time
-- Policy engine with LOW / MEDIUM / HIGH / CRITICAL risk levels
-- Workflow retries, dependency resolution and verification
-- WebSocket endpoint
-- SQLite for zero-setup local execution; PostgreSQL + Redis in Docker
+- safe multi-step tool loop
+- web search/fetch
+- calculator
+- workspace file read/write
+- time tool
+- persistent conversations, workflows, tasks, memory and audit log
+- approval gate for high-risk tools
+- SQLite locally; PostgreSQL + Redis in Docker
 - GitHub Actions CI
-
-## Important scope boundary
-
-This is a real executable foundation, not a finished Iron-Man-level autonomous agent. High-impact integrations such as sending email, production changes, payments, full computer control, voice wake word and long-running distributed workers must be added behind approval and sandbox layers.
-
-## Run locally
-
-```bash
-cp .env.example .env
-pip install -r requirements.txt
-uvicorn jarvis.api:app --reload --port 8000
-```
-
-Then open http://localhost:8000.
-
-It will run even without an AI API key using the deterministic local fallback. For real model responses, set at least one of:
-
-```env
-OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...
-GOOGLE_API_KEY=...
-```
-
-For live research, set either:
-
-```env
-TAVILY_API_KEY=...
-# or
-SERPER_API_KEY=...
-```
 
 ## Docker
 
@@ -53,11 +67,14 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Docker switches the database to PostgreSQL automatically and also starts Redis.
+The Docker setup persists the one-time local credential store in the `jarvis_config` named volume.
 
 ## API
 
 - `GET /health`
+- `GET /v1/setup/status`
+- `POST /v1/setup/providers/{provider}`
+- `DELETE /v1/setup/providers/{provider}`
 - `POST /v1/chat`
 - `GET /v1/models`
 - `GET /v1/tools`
@@ -66,49 +83,19 @@ Docker switches the database to PostgreSQL automatically and also starts Redis.
 - `POST /v1/memory`
 - `WS /ws/jarvis`
 
-Example:
+## Security boundary
 
-```bash
-curl -X POST http://localhost:8000/v1/chat \
-  -H 'content-type: application/json' \
-  -d '{"message":"Pesquise o mercado de barras energéticas e resuma oportunidades."}'
-```
+The current credential store is appropriate for a local, single-user MVP. Before exposing JARVIS publicly, add authentication, TLS, secret-manager integration, CSRF protections, rate limits and a hardened remote setup flow.
 
-## Architecture
+Host-level shell/computer control, payments and destructive actions are not enabled by this version.
 
-```text
-Web / API / WebSocket
-        ↓
-   Orchestrator
-   ├─ Memory
-   ├─ Planner
-   ├─ Model Router
-   ├─ Agent Manager
-   └─ Workflow Engine
-        ├─ Policy
-        ├─ Tools
-        └─ Verification
-             ↓
-OpenAI / Anthropic / Gemini / local fallback
-```
+## Next milestones
 
-## Next engineering milestones
-
-1. Add real MCP client/server registry.
-2. Add pgvector embeddings and semantic retrieval.
-3. Add queue workers for long-running workflows.
-4. Add OAuth connectors for Gmail/Calendar/GitHub/Drive.
-5. Add approval dashboard and signed action tokens.
-6. Add code execution and computer-use VM sandbox.
-7. Add realtime voice/STT/TTS.
-8. Add scheduler and condition-based autonomous workflows.
-9. Add evaluation harness for model routing.
-
-## Security defaults
-
-- Secrets stay in environment variables, never model prompts.
-- Files are restricted to `workspace/`.
-- Web fetch blocks local/private-network targets.
-- HIGH-risk tools require approval by policy.
-- CRITICAL tools are blocked.
-- Autonomy is disabled by default.
+1. MCP registry and dynamic tool discovery.
+2. pgvector semantic memory.
+3. background workers for long-running workflows.
+4. Gmail, Calendar, Drive and GitHub OAuth tools.
+5. richer approvals dashboard.
+6. sandboxed coding/computer-use VM.
+7. realtime voice.
+8. scheduler and condition-based proactive workflows.

@@ -4,13 +4,55 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>JARVIS</title>
 <style>
-:root{font-family:Inter,system-ui,sans-serif;color:#eaf2ff;background:#060b12}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -20%,#193b5a 0,#0a111a 35%,#05080d 70%)}.shell{max-width:980px;margin:auto;padding:34px 20px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.brand{letter-spacing:.32em;font-weight:700}.dot{width:9px;height:9px;border-radius:50%;background:#7ee8ff;box-shadow:0 0 18px #7ee8ff}.panel{background:rgba(9,18,29,.76);border:1px solid rgba(126,232,255,.18);border-radius:22px;backdrop-filter:blur(18px);overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.35)}#messages{height:64vh;overflow:auto;padding:24px}.m{max-width:80%;padding:13px 16px;border-radius:16px;margin:10px 0;line-height:1.48;white-space:pre-wrap}.u{margin-left:auto;background:#173247}.a{background:#0c1824;border:1px solid rgba(126,232,255,.12)}.meta{font-size:11px;opacity:.55;margin-top:6px}.composer{display:flex;gap:10px;border-top:1px solid rgba(255,255,255,.08);padding:14px}textarea{flex:1;resize:none;min-height:54px;max-height:150px;background:#08121d;border:1px solid rgba(126,232,255,.18);border-radius:14px;color:white;padding:15px;outline:none}button{width:110px;border:0;border-radius:14px;background:#d8f7ff;color:#061019;font-weight:700;cursor:pointer}.small{font-size:12px;opacity:.55}
+:root{font-family:Inter,system-ui,sans-serif;color:#eaf2ff;background:#060b12}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -20%,#193b5a 0,#0a111a 35%,#05080d 70%)}.shell{max-width:980px;margin:auto;padding:34px 20px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.brand{letter-spacing:.32em;font-weight:700}.status{display:flex;gap:9px;align-items:center;font-size:12px;opacity:.8}.dot{width:9px;height:9px;border-radius:50%;background:#ffb36b;box-shadow:0 0 18px #ffb36b}.dot.on{background:#7ee8ff;box-shadow:0 0 18px #7ee8ff}.panel{background:rgba(9,18,29,.76);border:1px solid rgba(126,232,255,.18);border-radius:22px;backdrop-filter:blur(18px);overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.35)}#messages{height:64vh;overflow:auto;padding:24px}.m{max-width:80%;padding:13px 16px;border-radius:16px;margin:10px 0;line-height:1.48;white-space:pre-wrap}.u{margin-left:auto;background:#173247}.a{background:#0c1824;border:1px solid rgba(126,232,255,.12)}.meta{font-size:11px;opacity:.55;margin-top:6px}.composer{display:flex;gap:10px;border-top:1px solid rgba(255,255,255,.08);padding:14px}textarea,input{background:#08121d;border:1px solid rgba(126,232,255,.18);border-radius:14px;color:white;padding:15px;outline:none}textarea{flex:1;resize:none;min-height:54px;max-height:150px}button{border:0;border-radius:14px;background:#d8f7ff;color:#061019;font-weight:700;cursor:pointer;padding:14px 18px}.send{width:110px}.small{font-size:12px;opacity:.58}.overlay{position:fixed;inset:0;background:rgba(2,6,11,.82);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;padding:20px;z-index:10}.overlay.show{display:flex}.setup{width:min(560px,100%);background:#09131f;border:1px solid rgba(126,232,255,.22);border-radius:24px;padding:26px;box-shadow:0 30px 100px #000}.setup h2{margin:0 0 8px}.setup p{opacity:.72;line-height:1.5}.row{display:flex;gap:10px;margin-top:14px}.row input{flex:1}.error{color:#ff9d9d;font-size:12px;margin-top:10px;min-height:18px}.models{margin-top:22px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08)}.modelrow{display:grid;grid-template-columns:90px 1fr auto;gap:8px;align-items:center;margin-top:9px}.modelrow input{min-width:0;padding:11px}.modelrow button{padding:11px 14px}.pill{display:inline-block;border:1px solid rgba(126,232,255,.2);border-radius:20px;padding:4px 8px;font-size:10px;opacity:.7}.setup a{color:#a8edff}
 </style>
 </head>
-<body><div class="shell"><div class="top"><div><div class="brand">JARVIS</div><div class="small">AI Operating System · v0.3 · autonomous routing</div></div><div class="dot"></div></div><div class="panel"><div id="messages"><div class="m a">OpenAI é a inteligência principal. O JARVIS escolhe automaticamente modelos especialistas e ferramentas seguras conforme a tarefa. Ações de alto risco continuam protegidas por aprovação.</div></div><div class="composer"><textarea id="input" placeholder="Fale com o JARVIS..."></textarea><button id="send">ENVIAR</button></div></div></div>
+<body>
+<div class="shell">
+  <div class="top">
+    <div><div class="brand">JARVIS</div><div class="small">AI Operating System · v0.3</div></div>
+    <div class="status"><div id="coreDot" class="dot"></div><span id="coreStatus">VERIFICANDO CORE</span><button id="modelsBtn" style="padding:7px 10px;background:#102235;color:#dff8ff;border:1px solid rgba(126,232,255,.18)">MODELOS</button></div>
+  </div>
+  <div class="panel">
+    <div id="messages"></div>
+    <div class="composer"><textarea id="input" placeholder="Fale com o JARVIS..."></textarea><button class="send" id="send">ENVIAR</button></div>
+  </div>
+</div>
+
+<div id="setupOverlay" class="overlay">
+  <div class="setup">
+    <div class="pill">CONFIGURAÇÃO ÚNICA</div>
+    <h2>Ativar o JARVIS Core</h2>
+    <p>A OpenAI será a inteligência principal do JARVIS. Depois desta configuração, você não escolhe IA manualmente: o JARVIS planeja com OpenAI e pode delegar subtarefas para especialistas automaticamente quando eles estiverem conectados.</p>
+    <div id="coreSetupBlock"><div class="row"><input id="openaiKey" type="password" autocomplete="off" placeholder="OpenAI API key"><button id="activateOpenAI">ATIVAR</button></div></div>
+    <div id="setupError" class="error"></div>
+    <p class="small">A chave é validada com a OpenAI e salva apenas neste computador em <code>~/.config/jarvis/secrets.json</code> com permissão restrita. Ela não é salva no GitHub.</p>
+    <p class="small">Você pode criar/consultar uma chave em <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com/api-keys</a>.</p>
+
+    <div id="specialists" class="models" style="display:none">
+      <strong>Especialistas opcionais</strong>
+      <p class="small">Não são necessários para usar o JARVIS. Se conectados, o Model Router poderá delegar automaticamente tarefas em que façam sentido.</p>
+      <div class="modelrow"><span>Claude</span><input id="anthropicKey" type="password" placeholder="Anthropic API key"><button onclick="connectSpecialist('anthropic')">CONECTAR</button></div>
+      <div class="modelrow"><span>Gemini</span><input id="googleKey" type="password" placeholder="Google AI API key"><button onclick="connectSpecialist('google')">CONECTAR</button></div>
+      <div class="row"><button id="finishSetup">ENTRAR NO JARVIS</button></div>
+    </div>
+  </div>
+</div>
+
 <script>
-let session=null;const msgs=document.getElementById('messages'),input=document.getElementById('input');
+let session=null,setupState=null;
+const msgs=document.getElementById('messages'),input=document.getElementById('input'),overlay=document.getElementById('setupOverlay');
 function add(text,cls,meta=''){const d=document.createElement('div');d.className='m '+cls;d.textContent=text;if(meta){const m=document.createElement('div');m.className='meta';m.textContent=meta;d.appendChild(m)}msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight}
-async function send(){const message=input.value.trim();if(!message)return;input.value='';add(message,'u');add('Processando…','a');const pending=msgs.lastChild;try{const r=await fetch('/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,session_id:session})});const d=await r.json();pending.remove();if(!r.ok)throw new Error(d.detail||JSON.stringify(d));session=d.session_id;add(d.message,'a',`${d.provider||'n/a'} · ${d.model||'n/a'} · ${d.workflow_id}`)}catch(e){pending.remove();add('Erro: '+e.message,'a')}}
+function setCore(ready){document.getElementById('coreDot').classList.toggle('on',ready);document.getElementById('coreStatus').textContent=ready?'OPENAI CORE ONLINE':'SETUP NECESSÁRIO'}
+async function refreshSetup(){const r=await fetch('/v1/setup/status');setupState=await r.json();setCore(setupState.ready);document.getElementById('coreSetupBlock').style.display=setupState.ready?'none':'block';document.getElementById('specialists').style.display=setupState.ready?'block':'none';if(!setupState.ready){overlay.classList.add('show')}else{overlay.classList.remove('show');if(!msgs.children.length)add('OpenAI Core online. O roteamento para modelos especialistas e ferramentas é automático.','a',setupState.primary.model)}return setupState}
+async function configure(provider,key){const r=await fetch('/v1/setup/providers/'+provider,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:key})});const d=await r.json();if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:JSON.stringify(d.detail));return d}
+document.getElementById('activateOpenAI').onclick=async()=>{const err=document.getElementById('setupError');err.textContent='Validando com a OpenAI…';try{await configure('openai',document.getElementById('openaiKey').value);err.textContent='OpenAI Core conectado.';document.getElementById('specialists').style.display='block';setCore(true)}catch(e){err.textContent=e.message}}
+async function connectSpecialist(provider){const id=provider==='anthropic'?'anthropicKey':'googleKey',err=document.getElementById('setupError');err.textContent='Validando '+provider+'…';try{await configure(provider,document.getElementById(id).value);err.textContent=provider+' conectado. O roteamento será automático.'}catch(e){err.textContent=e.message}}
+document.getElementById('finishSetup').onclick=async()=>{await refreshSetup()}
+document.getElementById('modelsBtn').onclick=async()=>{await refreshSetup();overlay.classList.add('show');if(setupState?.ready){document.getElementById('coreSetupBlock').style.display='none';document.getElementById('specialists').style.display='block'}}
+async function send(){const message=input.value.trim();if(!message)return;input.value='';add(message,'u');add('Processando…','a');const pending=msgs.lastChild;try{const r=await fetch('/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,session_id:session})});const d=await r.json();pending.remove();if(r.status===503&&d.detail?.code==='setup_required'){overlay.classList.add('show');setCore(false);throw new Error(d.detail.message)}if(!r.ok)throw new Error(JSON.stringify(d.detail||d));session=d.session_id;add(d.message,'a',`${d.provider||'n/a'} · ${d.model||'n/a'} · ${d.workflow_id}`)}catch(e){pending.remove();add('Erro: '+e.message,'a')}}
 document.getElementById('send').onclick=send;input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}})
-</script></body></html>
+refreshSetup().catch(e=>{setCore(false);add('Falha ao verificar configuração: '+e.message,'a')})
+</script>
+</body>
+</html>
