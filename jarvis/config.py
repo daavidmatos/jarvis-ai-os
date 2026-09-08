@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     fuel_api_token: str | None = None
     fuel_webhook_secret: str | None = None
 
+    # Universal collaboration connectors.
+    # Trello remains optional until the user's account is connected.
+    trello_api_key: str | None = None
+    trello_token: str | None = None
+
+    # Shared secret used by the local JARVIS Desktop Bridge companion. In hosted
+    # environments this MUST be set before accepting screen/app-control sessions.
+    desktop_bridge_token: str | None = None
+
     # Optional dedicated search providers. OpenAI hosted web search remains available.
     tavily_api_key: str | None = None
     serper_api_key: str | None = None
