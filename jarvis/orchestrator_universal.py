@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from jarvis.orchestrator import Orchestrator as CoreOrchestrator
-from jarvis.universal_collaboration import UniversalCollaborationHub
+from jarvis.universal_collaboration_v2 import EnhancedUniversalCollaborationHub
 
 
 class UniversalOrchestrator(CoreOrchestrator):
@@ -16,7 +16,7 @@ class UniversalOrchestrator(CoreOrchestrator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.collaboration = UniversalCollaborationHub(self.router, self.tools)
+        self.collaboration = EnhancedUniversalCollaborationHub(self.router, self.tools)
 
     async def handle(
         self,
