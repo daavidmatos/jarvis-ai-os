@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from fastapi import HTTPException
+
 
 @dataclass
 class ModelReply:
@@ -9,12 +11,12 @@ class ModelReply:
     model: str
 
 
-class ProviderAPIError(RuntimeError):
-    """Safe, user-facing wrapper for an upstream model-provider failure.
+class ProviderAPIError(HTTPException):
+    """Safe HTTP error for an upstream model-provider failure.
 
-    Provider implementations should translate raw HTTP/client errors into this
-    exception so the API can return a useful JSON error without leaking secrets or
-    dumping an upstream response body into the browser.
+    Provider implementations translate raw upstream failures into this exception so
+    FastAPI returns useful JSON instead of an opaque 500 page. Secrets and raw
+    response bodies are never exposed.
     """
 
     def __init__(
@@ -25,9 +27,15 @@ class ProviderAPIError(RuntimeError):
         status_code: int = 502,
         upstream_code: str | None = None,
     ) -> None:
-        super().__init__(message)
+        detail = {
+            "code": "provider_error",
+            "provider": provider,
+            "message": message,
+        }
+        if upstream_code:
+            detail["upstream_code"] = upstream_code
+        super().__init__(status_code=status_code, detail=detail)
         self.provider = provider
-        self.status_code = status_code
         self.upstream_code = upstream_code
 
 
