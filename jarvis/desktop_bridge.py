@@ -24,13 +24,7 @@ class DesktopClient:
 
 
 class DesktopBridge:
-    """Server-side half of the JARVIS Desktop Bridge.
-
-    The cloud JARVIS cannot inspect/control local desktop applications by itself.
-    An authenticated local companion reports state/private screen frames and receives
-    semantic commands. Structured action planning and local adapters enforce a second
-    boundary before an edit reaches an application such as Blender.
-    """
+    """Authenticated transport between cloud JARVIS and local/editor adapters."""
 
     def __init__(self):
         self.clients: dict[str, DesktopClient] = {}
@@ -104,12 +98,7 @@ class DesktopBridge:
         mime_type = str(payload.get("mime_type") or "")
         stored: dict[str, Any] = {}
         if payload.get("data_b64"):
-            stored = desktop_frames.store(
-                client_id,
-                frame_id,
-                mime_type,
-                str(payload.get("data_b64")),
-            )
+            stored = desktop_frames.store(client_id, frame_id, mime_type, str(payload.get("data_b64")))
         client.last_frame = {
             "frame_id": frame_id,
             "mime_type": mime_type,
@@ -135,8 +124,7 @@ class DesktopBridge:
         if command_id:
             self._results[command_id] = result
             while len(self._results) > 500:
-                oldest = next(iter(self._results))
-                self._results.pop(oldest, None)
+                self._results.pop(next(iter(self._results)), None)
         client = self.clients.get(client_id)
         if client:
             client.last_result = result
@@ -145,6 +133,11 @@ class DesktopBridge:
 
     def command_result(self, command_id: str) -> dict[str, Any] | None:
         return self._results.get(str(command_id))
+
+    @staticmethod
+    def _write_capable(client: DesktopClient) -> bool:
+        adapter = client.state.get("adapter") if isinstance(client.state, dict) else None
+        return bool(isinstance(adapter, dict) and adapter.get("write"))
 
     def status(self) -> dict[str, Any]:
         connected = [c for c in self.clients.values() if c.connected]
@@ -160,12 +153,13 @@ class DesktopBridge:
             "photoshop": {"photoshop", "adobe_photoshop"},
             "illustrator": {"illustrator", "adobe_illustrator"},
             "premiere": {"premiere", "premiere_pro", "adobe_premiere_pro"},
-            "after_effects": {"after_effects", "adobe_after_effects"},
+            "after_effects": {"after_effects", "aftereffects", "adobe_after_effects"},
             "blender": {"blender"},
             "figma": {"figma"},
             "trello": {"trello"},
         }
         wanted_set = aliases.get(wanted, {wanted})
+        matches: list[DesktopClient] = []
         for client in self.clients.values():
             if not client.connected:
                 continue
@@ -173,8 +167,12 @@ class DesktopBridge:
             if client.active_app:
                 available.add(client.active_app)
             if available.intersection(wanted_set):
-                return client
-        return None
+                matches.append(client)
+        if not matches:
+            return None
+        # A dedicated editor plugin/adapter is preferred over a generic screen observer.
+        matches.sort(key=lambda c: (self._write_capable(c), c.last_seen), reverse=True)
+        return matches[0]
 
     def snapshot_for_app(self, app: str) -> dict[str, Any] | None:
         client = self.find_app(app)
@@ -214,8 +212,7 @@ class DesktopBridge:
             "plan": plan,
             "created_at": self._now(),
         }
-        queue = self._queues.setdefault(client_id, asyncio.Queue())
-        await queue.put(command)
+        await self._queues.setdefault(client_id, asyncio.Queue()).put(command)
         return command
 
     async def next_command(self, client_id: str, timeout: float = 25.0) -> dict[str, Any] | None:
