@@ -55,6 +55,7 @@ class MobilityAssistant:
         patterns = (
             r"(?:para|pra)\s+ir\s+(?:para|pro|pra|ao|à)\s+(.+)$",
             r"(?:quero\s+ir|me\s+leve|me\s+leva|levar\s+me|leve\s+me)\s+(?:para|pro|pra|ao|à)\s+(.+)$",
+            r"(?:uber|corrida).*?\s(?:para|pra)\s+mim\s+(?:para|pro|pra|ao|à)\s+(.+)$",
             r"(?:uber|corrida).*?\s(?:para|pro|pra|ao|à)\s+(.+)$",
         )
         for pattern in patterns:
