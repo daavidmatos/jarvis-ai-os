@@ -31,6 +31,24 @@ def test_detects_uber_and_extracts_destination():
     )
 
 
+def test_detects_speech_transcription_variants_and_cleans_destination_article():
+    variants = (
+        "Peço um Uber pra mim para o Shopping Tijuca",
+        "Me chama um Uber pro Shopping Tijuca",
+        "Quero um Uber para o Shopping Tijuca",
+        "Preciso de um Uber pro Shopping Tijuca",
+        "Manda um Uber pra Shopping Tijuca",
+    )
+    for message in variants:
+        assert MobilityAssistant.looks_like_request(message), message
+        assert MobilityAssistant._destination(message) == "Shopping Tijuca", message
+
+
+def test_does_not_route_general_uber_discussion_as_ride_request():
+    assert not MobilityAssistant.looks_like_request("O que você acha do Uber como empresa?")
+    assert not MobilityAssistant.looks_like_request("Uber tem ações na bolsa?")
+
+
 @pytest.mark.asyncio
 async def test_uber_requires_location_before_handoff():
     assistant = MobilityAssistant(FakeDB())
@@ -60,4 +78,6 @@ async def test_uber_deep_link_uses_current_coordinates_and_destination():
     assert "pickup%5Blongitude%5D=-43.2331000" in action["url"]
     assert "Shopping+Tijuca" in action["url"]
     assert "confirmadas dentro do Uber" in result["message"]
+    assert "-22.9249" not in result["message"]
+    assert "-43.2331" not in result["message"]
     assert db.audits[0][0] == "mobility.uber.prepared"
