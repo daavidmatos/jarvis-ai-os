@@ -159,7 +159,12 @@ class GoogleContentClient:
             }
             for x in meta.get("sheets", [])
         ]
-        ranges = [f"'{s['title'].replace("'", "''")}'!A1:Z50" for s in sheets[:5] if s.get("title")]
+        ranges: list[str] = []
+        for sheet in sheets[:5]:
+            title = sheet.get("title")
+            if title:
+                escaped = str(title).replace("'", "''")
+                ranges.append(f"'{escaped}'!A1:Z50")
         values: dict[str, Any] = {}
         if ranges:
             try:
