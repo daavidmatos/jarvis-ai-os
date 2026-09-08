@@ -1,0 +1,25 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{font:12px Inter,system-ui,sans-serif;margin:14px;background:var(--figma-color-bg);color:var(--figma-color-text)}input,button{width:100%;box-sizing:border-box;margin:5px 0;padding:8px;border-radius:6px;border:1px solid var(--figma-color-border);background:var(--figma-color-bg-secondary);color:var(--figma-color-text)}button{cursor:pointer;background:#111;color:white;border:0}.row{display:flex;gap:6px}.row button{width:50%}.status{font-size:11px;opacity:.75;margin-top:8px}.ok{color:#2fa36b}.bad{color:#d55}
+</style></head><body>
+<strong>JARVIS · FIGMA</strong><div class="status">Conecte este arquivo ao seu JARVIS privado.</div>
+<input id="server" placeholder="https://jarvis.seudominio.com"><input id="token" type="password" placeholder="Desktop Bridge token">
+<div class="row"><button id="save">SALVAR</button><button id="connect">CONECTAR</button></div><div id="status" class="status">Desconectado</div>
+<script>
+let ws=null,cfg={};
+function setStatus(text,ok){const e=document.getElementById('status');e.textContent=text;e.className='status '+(ok===true?'ok':ok===false?'bad':'');}
+function wsUrl(server,token){const u=new URL(server);u.protocol=u.protocol==='https:'?'wss:':'ws:';u.pathname='/ws/desktop-bridge';u.search='?token='+encodeURIComponent(token||'');return u.toString();}
+function send(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
+function requestState(){parent.postMessage({pluginMessage:{type:'request_state'}},'*');}
+function connect(){if(ws)try{ws.close()}catch(e){};const server=document.getElementById('server').value.trim();const token=document.getElementById('token').value.trim();if(!server){setStatus('Informe o servidor.',false);return;}setStatus('Conectando…');try{ws=new WebSocket(wsUrl(server,token));}catch(e){setStatus(String(e),false);return;}
+ws.onopen=()=>{setStatus('Conectado ao JARVIS',true);requestState();};
+ws.onclose=()=>setStatus('Desconectado',false);ws.onerror=()=>setStatus('Erro de conexão',false);
+ws.onmessage=(ev)=>{let m;try{m=JSON.parse(ev.data)}catch(e){return;}if(m.type==='hello_ack'||m.type==='state_ack'||m.type==='result_ack')return;if(m.type==='command'){const plan=m.plan||{};parent.postMessage({pluginMessage:{type:'execute',command_id:m.command_id,plan}},'*');}};
+}
+window.onmessage=(event)=>{const m=event.data.pluginMessage;if(!m)return;if(m.type==='ready'){parent.postMessage({pluginMessage:{type:'load_config'}},'*');}
+else if(m.type==='config'){cfg=m.config||{};document.getElementById('server').value=cfg.server_url||'';document.getElementById('token').value=cfg.token||'';}
+else if(m.type==='state'){send({type:'hello',client_id:cfg.client_id||('figma-'+Date.now()),platform:'figma-plugin',apps:['figma'],active_app:'figma',active_document:m.active_document,state:m.state});send({type:'state',apps:['figma'],active_app:'figma',active_document:m.active_document,state:m.state});}
+else if(m.type==='result'){send({type:'result',command_id:m.command_id,ok:m.ok,result:m.result||{},error:m.error||null,apps:['figma'],active_app:'figma',active_document:m.active_document,state:m.state||{}});setTimeout(requestState,250);}};
+document.getElementById('save').onclick=()=>{cfg={...cfg,server_url:document.getElementById('server').value.trim(),token:document.getElementById('token').value.trim()};parent.postMessage({pluginMessage:{type:'save_config',config:cfg}},'*');setStatus('Configuração salva',true);};
+document.getElementById('connect').onclick=()=>{document.getElementById('save').click();setTimeout(connect,80);};
+setInterval(()=>{if(ws&&ws.readyState===1)requestState();},4000);
+</script></body></html>
