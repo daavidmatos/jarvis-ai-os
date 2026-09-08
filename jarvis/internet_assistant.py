@@ -12,14 +12,16 @@ If evidence is incomplete, say so briefly instead of filling gaps from memory.
 Be concise, practical and address the user as 'senhor'. Prefer a direct recommendation
 when the evidence supports one. Do not claim to have entered an account, added items to a
 cart, placed an order or completed any external action unless the tool result proves it.
+Answer in Brazilian Portuguese unless the user explicitly asks for another language.
 """
 
 
 class InternetAssistant:
     """Low-latency path for explicit live-web requests.
 
-    This bypasses the general planner so a simple request such as "pesquise na internet"
-    cannot accidentally be answered from model memory when a live search tool is available.
+    Research commands must never silently fall back to model memory. Natural voice
+    phrasing such as "quem é X, pesquise para mim" therefore routes here even when the
+    user does not literally say "na internet".
     """
 
     def __init__(self, router, tools, db):
@@ -63,11 +65,16 @@ class InternetAssistant:
             "supermercado online",
             "delivery",
         )
-        verbs = ("pesquise", "pesquisar", "procure", "procurar", "busque", "buscar", "ache", "encontre")
+        research_verbs = ("pesquise", "pesquisar", "busque", "buscar")
+        commerce_verbs = (
+            "pesquise", "pesquisar", "procure", "procurar", "busque", "buscar",
+            "ache", "encontre",
+        )
         return (
             any(x in text for x in explicit)
             or any(x in text for x in fresh)
-            or (any(x in text for x in commerce) and any(v in text for v in verbs))
+            or any(v in text for v in research_verbs)
+            or (any(x in text for x in commerce) and any(v in text for v in commerce_verbs))
         )
 
     async def research(self, sid: UUID, message: str, context: str) -> dict:

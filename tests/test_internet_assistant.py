@@ -6,6 +6,8 @@ def test_internet_intent_is_explicit_and_shopping_aware():
     assert InternetAssistant.looks_like_request("Pesquise na internet onde comprar manteiga")
     assert InternetAssistant.looks_like_request("Procure no iFood um mercado para comprar manteiga")
     assert InternetAssistant.looks_like_request("Qual o preço atual desse produto?")
+    assert InternetAssistant.looks_like_request("Quem é Marisete Matos de Cerqueira, pesquise para mim")
+    assert InternetAssistant.looks_like_request("Busque informações públicas sobre essa pessoa")
     assert not InternetAssistant.looks_like_request("Oi, tudo bem?")
 
 

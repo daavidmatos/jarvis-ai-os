@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict
 from typing import Any
 
@@ -19,6 +20,28 @@ class EnhancedUniversalCollaborationHub(CloudEnhancedUniversalCollaborationHub):
     def __init__(self, router, tools):
         super().__init__(router, tools)
         self.desktop_planner = DesktopActionPlanner(router)
+
+    @classmethod
+    def detect_target(cls, message: str) -> dict[str, Any] | None:
+        # Mobile speech recognition sometimes separates or distorts "Figma" as
+        # "Fig M", "Fig Mo" or "Fig MØ". Normalize those common variants before
+        # target detection so the request does not fall into generic Mission mode.
+        normalized = message.lower()
+        normalized = re.sub(r"\bfig\s*m(?:a|o|0|ø)?\b", "figma", normalized, flags=re.I)
+        return super().detect_target(normalized)
+
+    @staticmethod
+    def _explicit_single_edit(message: str) -> bool:
+        text = message.lower().strip()
+        if text.startswith("vamos "):
+            return False
+        verbs = (
+            "mude ", "troque ", "adicione ", "remova ", "apague ", "delete ",
+            "duplique ", "mova ", "renomeie ", "aumente ", "reduza ", "aplique ",
+            "renderize ", "exporte ", "salve ", "crie ", "cria ", "edite ",
+            "corrija ", "faça ", "faca ",
+        )
+        return any(text.startswith(v) for v in verbs)
 
     async def _analyze_snapshot(
         self, state: UniversalWorkspaceState, message: str
@@ -106,6 +129,31 @@ next action. No screenshot is available, so never claim visual details.""",
         ):
             return await self._desktop_single_edit(state, message)
         return await super().handle(session_id, message)
+
+    async def handle_or_start(self, session_id: str, message: str) -> dict[str, Any] | None:
+        target = self.detect_target(message)
+        state = universal_workspace_store.get(session_id)
+        direct_desktop_command = bool(
+            target
+            and target.get("kind") in {"design", "video_edit", "3d_scene"}
+            and self._explicit_single_edit(message)
+        )
+
+        # A direct "crie no Figma/Blender/Photoshop" command is collaborative app
+        # work, not an autonomous Mission proposal. Start/switch the workspace first;
+        # if the Desktop Bridge is already connected, execute this single command.
+        if direct_desktop_command and (
+            not state
+            or state.status != "active"
+            or state.target != target.get("target")
+        ):
+            started = await self.start(session_id, message)
+            state = universal_workspace_store.get(session_id)
+            if state and state.integration_state == "connected":
+                return await self._desktop_single_edit(state, message)
+            return started
+
+        return await super().handle_or_start(session_id, message)
 
     def get_workspace(self, session_id: str) -> dict[str, Any] | None:
         state = universal_workspace_store.get(session_id)
