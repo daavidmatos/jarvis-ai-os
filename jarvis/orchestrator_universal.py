@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from uuid import UUID
 
 from jarvis.fast_chat import FastChat
@@ -64,7 +63,10 @@ class UniversalOrchestrator(CoreOrchestrator):
             f"{m['role']}: {m['content']}" for m in history[:-1]
         )
         permissions = standing_permissions.context_text()
-        location_text = json.dumps(location, ensure_ascii=False) if location else "(not supplied)"
+        # Precise coordinates are intentionally not exposed to generic model context.
+        # Location-aware assistants receive the ephemeral coordinates directly as tool
+        # input and may use them operationally without echoing them back to the user.
+        location_text = "available to location-aware tools" if location else "not supplied"
         return (
             f"Relevant memory:\n{memories or '(none)'}\n\n"
             f"Recent conversation:\n{history_text or '(none)'}\n\n"
