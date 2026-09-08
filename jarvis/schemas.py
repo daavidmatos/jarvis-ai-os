@@ -39,6 +39,8 @@ class ChatResponse(BaseModel):
     provider: str | None = None
     model: str | None = None
     actions: list[dict[str, Any]] = Field(default_factory=list)
+    # Optional visual state for interactive/collaborative work such as Google Ads.
+    workspace: dict[str, Any] | None = None
 
 class PlanTask(BaseModel):
     id: str
