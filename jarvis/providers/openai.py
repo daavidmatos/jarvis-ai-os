@@ -4,7 +4,7 @@ import httpx
 
 from jarvis.config import settings
 from jarvis.credentials import credential_store
-from jarvis.providers.base import LLMProvider, ModelReply
+from jarvis.providers.base import LLMProvider, ModelReply, ProviderAPIError
 
 
 class OpenAIProvider(LLMProvider):
@@ -21,18 +21,93 @@ class OpenAIProvider(LLMProvider):
     def available(self):
         return bool(self.api_key)
 
+    @staticmethod
+    def _upstream_error(response: httpx.Response) -> tuple[str | None, str | None]:
+        try:
+            payload = response.json()
+        except Exception:
+            return None, None
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if not isinstance(error, dict):
+            return None, None
+        code = error.get("code") or error.get("type")
+        message = error.get("message")
+        return (str(code) if code else None, str(message) if message else None)
+
+    def _provider_error(self, response: httpx.Response) -> ProviderAPIError:
+        status = response.status_code
+        code, raw_message = self._upstream_error(response)
+        raw_message = (raw_message or "").strip().replace("\n", " ")[:320]
+
+        if status in {401, 403}:
+            message = (
+                "A OpenAI recusou a credencial da API ou as permissões do projeto. "
+                "Verifique a OPENAI_API_KEY configurada no servidor."
+            )
+            api_status = 502
+        elif status == 429 and code == "insufficient_quota":
+            message = (
+                "A API da OpenAI está sem cota/créditos de faturamento. "
+                "A assinatura do ChatGPT é separada da API; configure billing/créditos na OpenAI Platform."
+            )
+            api_status = 429
+        elif status == 429:
+            message = "A API da OpenAI atingiu um limite temporário de uso. Tente novamente em instantes."
+            api_status = 429
+        elif status == 404:
+            message = f"O modelo OpenAI configurado ({self.model}) não está disponível para este projeto."
+            api_status = 502
+        elif status == 400:
+            message = "A OpenAI recusou a solicitação enviada pelo JARVIS."
+            if raw_message:
+                message += f" Detalhe: {raw_message}"
+            api_status = 502
+        elif status >= 500:
+            message = "A OpenAI está temporariamente indisponível. Tente novamente em instantes."
+            api_status = 502
+        else:
+            message = f"Falha ao consultar a OpenAI (HTTP {status})."
+            if raw_message:
+                message += f" Detalhe: {raw_message}"
+            api_status = 502
+
+        return ProviderAPIError(
+            self.name,
+            message,
+            status_code=api_status,
+            upstream_code=code,
+        )
+
     async def _responses(self, payload: dict) -> dict:
         key = self.api_key
         if not key:
             raise RuntimeError("OpenAI is not configured")
-        async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(
-                "https://api.openai.com/v1/responses",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-            r.raise_for_status()
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                r = await client.post(
+                    "https://api.openai.com/v1/responses",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json=payload,
+                )
+        except httpx.HTTPError as exc:
+            raise ProviderAPIError(
+                self.name,
+                "Não foi possível conectar à API da OpenAI. Tente novamente em instantes.",
+                status_code=502,
+                upstream_code=exc.__class__.__name__,
+            ) from None
+
+        if r.is_error:
+            raise self._provider_error(r)
+        try:
             return r.json()
+        except ValueError:
+            raise ProviderAPIError(
+                self.name,
+                "A OpenAI retornou uma resposta inválida ao JARVIS.",
+                status_code=502,
+                upstream_code="invalid_json",
+            ) from None
 
     @staticmethod
     def _text(data: dict) -> str:
