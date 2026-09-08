@@ -14,8 +14,17 @@ class DesktopFrameError(RuntimeError):
 
 
 class DesktopFrameStore:
-    def __init__(self, retention: int = 2):
-        self.retention = max(1, int(retention))
+    def __init__(self, retention: int | None = None):
+        self._retention_override = retention
+
+    @property
+    def retention(self) -> int:
+        value = (
+            self._retention_override
+            if self._retention_override is not None
+            else getattr(settings, "desktop_frame_retention", 2)
+        )
+        return max(1, int(value))
 
     @property
     def root(self) -> Path:
