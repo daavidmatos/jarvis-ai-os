@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 5,
+  "id": "com.jarvis.aios.photoshop",
+  "name": "JARVIS Creative Bridge",
+  "version": "0.2.0",
+  "main": "index.html",
+  "host": { "app": "PS", "minVersion": "24.2.0" },
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "jarvisPanel",
+      "label": { "default": "JARVIS" },
+      "minimumSize": { "width": 260, "height": 240 },
+      "preferredDockedSize": { "width": 320, "height": 360 },
+      "preferredFloatingSize": { "width": 340, "height": 380 }
+    }
+  ],
+  "requiredPermissions": {
+    "network": { "domains": "all" }
+  }
+}
