@@ -13,13 +13,15 @@ class ToolRegistry:
 
     def list(self): return [t.spec.model_dump() for t in self.tools.values()]
 
-    async def execute(self, name: str, approved: bool=False, **kwargs):
+    def autonomous_specs(self):
+        return [t.spec.model_dump() for t in self.tools.values() if t.risk in {RiskLevel.LOW,RiskLevel.MEDIUM}]
+
+    async def execute(self,name:str,approved:bool=False,**kwargs):
         if name not in self.tools: raise KeyError(f"Unknown tool: {name}")
         tool=self.tools[name]
         if not self.policy.can_execute(tool.risk,approved=approved):
             return {"ok":False,"approval_required":tool.risk==RiskLevel.HIGH,"error":f"Policy blocked {name}"}
         try:
-            result=await tool.run(**kwargs)
-            return {"ok":True,"result":result}
+            result=await tool.run(**kwargs); return {"ok":True,"result":result}
         except Exception as e:
             return {"ok":False,"error":str(e)}
