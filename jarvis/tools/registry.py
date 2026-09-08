@@ -5,6 +5,7 @@ from typing import Any
 from jarvis.missions import MissionStatus, mission_store
 from jarvis.policy import PolicyEngine
 from jarvis.schemas import RiskLevel
+from jarvis.tools.base import Tool
 from jarvis.tools.calculator import CalculatorTool
 from jarvis.tools.external import EmailSendTool
 from jarvis.tools.files import FileReadTool, FileWriteTool
@@ -78,6 +79,46 @@ class ToolRegistry:
         ]
         self.tools = {t.name: t for t in tools}
         self.policy = PolicyEngine()
+
+        # The collaborative workbench is deliberately HIGH risk because it can
+        # perform explicit paid-ad mutations. The web client passes approval only
+        # for the user's current workbench command; the workbench itself refuses
+        # to infer a mutation from vague phrases such as "vamos mudar".
+        from jarvis.collaboration import CollaborativeWorkbench, workbench_store
+        from jarvis.router import ModelRouter
+
+        handler = CollaborativeWorkbench(ModelRouter(), self)
+
+        class GoogleAdsWorkbenchTool(Tool):
+            name = "google_ads.workbench"
+            description = (
+                "Interactive Google Ads workbench. Starts collaborative mode, shows live metrics, "
+                "builds campaign drafts, and applies only explicit user-requested edits."
+            )
+            risk = RiskLevel.HIGH
+            requires_approval = True
+
+            async def run(inner_self, session_id: str, message: str):
+                state = workbench_store.get(session_id)
+                if state and state.status == "active":
+                    result = await handler.handle(session_id, message)
+                    if result is not None:
+                        return result
+                if handler.looks_like_start(message):
+                    return await handler.start(session_id)
+                return {
+                    "message": (
+                        "Nenhum workbench do Google Ads está ativo. Diga algo como "
+                        "'vamos criar uma campanha no Google Ads'."
+                    ),
+                    "actions": [],
+                    "workspace": None,
+                    "provider": "google_ads",
+                    "model": None,
+                }
+
+        workbench_tool = GoogleAdsWorkbenchTool()
+        self.tools[workbench_tool.name] = workbench_tool
 
     def list(self):
         return [t.spec.model_dump() for t in self.tools.values()]
