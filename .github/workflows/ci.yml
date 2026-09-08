@@ -12,3 +12,18 @@ jobs:
           python-version: '3.13'
       - run: pip install -r requirements.txt
       - run: pytest
+      - name: Boot real API and smoke HTTP runtime
+        env:
+          APP_ENV: development
+          OPENAI_API_KEY: ''
+          ALLOW_LOCAL_FALLBACK: 'false'
+        run: |
+          set -Eeuo pipefail
+          python -m uvicorn jarvis.api:app --host 127.0.0.1 --port 8000 >/tmp/jarvis-uvicorn.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" >/dev/null 2>&1 || true' EXIT
+          if ! python scripts/runtime_smoke.py --base-url http://127.0.0.1:8000 --wait 25 --expect-unconfigured; then
+            echo '--- JARVIS uvicorn log ---'
+            cat /tmp/jarvis-uvicorn.log || true
+            exit 1
+          fi
