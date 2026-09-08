@@ -19,9 +19,17 @@ class TaskStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+class LocationContext(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_m: float | None = Field(default=None, ge=0)
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     session_id: UUID | None = None
+    # Ephemeral device location supplied only for the current request. The core
+    # does not write this into long-term memory.
+    location: LocationContext | None = None
 
 class ChatResponse(BaseModel):
     workflow_id: UUID
@@ -30,6 +38,7 @@ class ChatResponse(BaseModel):
     message: str
     provider: str | None = None
     model: str | None = None
+    actions: list[dict[str, Any]] = Field(default_factory=list)
 
 class PlanTask(BaseModel):
     id: str
