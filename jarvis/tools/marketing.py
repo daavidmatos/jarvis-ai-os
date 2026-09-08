@@ -68,6 +68,64 @@ class GoogleAdsPerformanceTool(Tool):
         return {"rows": await google_ads.performance(days)}
 
 
+class GoogleAdsKeywordsTool(Tool):
+    name = "google_ads.keywords"
+    description = "Read keywords and keyword performance for one Google Ads campaign. Read-only."
+    risk = RiskLevel.LOW
+
+    async def run(self, campaign_id: str, days: int = 30):
+        return {"rows": await google_ads.keywords(campaign_id, days)}
+
+
+class GoogleAdsAddKeywordsTool(Tool):
+    name = "google_ads.add_keywords"
+    description = "Add explicitly requested keywords to a Google Ads ad group. This can change paid traffic and spend."
+    risk = RiskLevel.HIGH
+    requires_approval = True
+    mission_permission = "spend"
+
+    async def run(
+        self,
+        ad_group_resource: str,
+        keywords: list[str],
+        match_type: str = "PHRASE",
+    ):
+        return await google_ads.add_keywords(ad_group_resource, keywords, match_type)
+
+
+class GoogleAdsRemoveKeywordTool(Tool):
+    name = "google_ads.remove_keyword"
+    description = "Remove one explicitly requested Google Ads keyword criterion."
+    risk = RiskLevel.HIGH
+    requires_approval = True
+    mission_permission = "spend"
+
+    async def run(self, criterion_resource: str):
+        return await google_ads.remove_keyword(criterion_resource)
+
+
+class GoogleAdsReplaceKeywordTool(Tool):
+    name = "google_ads.replace_keyword"
+    description = "Replace one explicitly requested Google Ads keyword with another."
+    risk = RiskLevel.HIGH
+    requires_approval = True
+    mission_permission = "spend"
+
+    async def run(
+        self,
+        criterion_resource: str,
+        ad_group_resource: str,
+        new_keyword: str,
+        match_type: str = "PHRASE",
+    ):
+        return await google_ads.replace_keyword(
+            criterion_resource,
+            ad_group_resource,
+            new_keyword,
+            match_type,
+        )
+
+
 class GoogleAdsCreateSearchCampaignTool(Tool):
     name = "google_ads.create_search_campaign"
     description = "Create a complete Search campaign in PAUSED state with budget, ad group, keywords and responsive search ad."
