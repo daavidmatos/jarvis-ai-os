@@ -39,6 +39,24 @@ from jarvis.tools.marketing import (
 )
 from jarvis.tools.time import TimeTool
 from jarvis.tools.web import WebFetchTool, WebSearchTool
+from jarvis.tools.workspaces import (
+    DesktopCommandTool,
+    DesktopInspectTool,
+    DesktopStatusTool,
+    GoogleDocsAppendTool,
+    GoogleDocsReadTool,
+    GoogleDocsRecentTool,
+    GoogleDocsReplaceTool,
+    GoogleSheetsAppendTool,
+    GoogleSheetsReadTool,
+    GoogleSheetsRecentTool,
+    GoogleSheetsUpdateTool,
+    TrelloBoardTool,
+    TrelloBoardsTool,
+    TrelloCreateCardTool,
+    TrelloMoveCardTool,
+    TrelloUpdateCardTool,
+)
 
 
 class ToolRegistry:
@@ -76,14 +94,29 @@ class ToolRegistry:
             FuelRecentOrdersTool(),
             FuelSalesSummaryTool(),
             FuelCreateCouponTool(),
+            GoogleDocsRecentTool(),
+            GoogleDocsReadTool(),
+            GoogleDocsAppendTool(),
+            GoogleDocsReplaceTool(),
+            GoogleSheetsRecentTool(),
+            GoogleSheetsReadTool(),
+            GoogleSheetsUpdateTool(),
+            GoogleSheetsAppendTool(),
+            TrelloBoardsTool(),
+            TrelloBoardTool(),
+            TrelloCreateCardTool(),
+            TrelloMoveCardTool(),
+            TrelloUpdateCardTool(),
+            DesktopStatusTool(),
+            DesktopInspectTool(),
+            DesktopCommandTool(),
         ]
         self.tools = {t.name: t for t in tools}
         self.policy = PolicyEngine()
 
-        # The collaborative workbench is deliberately HIGH risk because it can
-        # perform explicit paid-ad mutations. The web client passes approval only
-        # for the user's current workbench command; the workbench itself refuses
-        # to infer a mutation from vague phrases such as "vamos mudar".
+        # Google Ads' collaborative workbench remains a HIGH-risk surface because
+        # an explicit turn can perform a paid-ad mutation. Vague collaboration
+        # phrases are filtered inside CollaborativeWorkbench before any mutation.
         from jarvis.collaboration import CollaborativeWorkbench, workbench_store
         from jarvis.router import ModelRouter
 
@@ -150,6 +183,8 @@ class ToolRegistry:
             "external_messages": bool(envelope.get("allow_external_messages")),
             "spend": bool(envelope.get("allow_spend")),
             "commerce": bool(envelope.get("allow_commerce")),
+            "workspace_edit": bool(envelope.get("allow_workspace_edits")),
+            "computer_control": bool(envelope.get("allow_computer_control")),
         }.get(permission, False)
         if not allowed:
             return False, f"Mission envelope does not authorize {permission}"
