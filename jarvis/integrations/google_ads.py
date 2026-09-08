@@ -109,6 +109,26 @@ class GoogleAdsClient:
         """.strip()
         return await self.search(query)
 
+    async def keywords(self, campaign_id: str, days: int = 30) -> list[dict[str, Any]]:
+        campaign_id = "".join(ch for ch in str(campaign_id) if ch.isdigit())
+        if not campaign_id:
+            raise GoogleAdsError("A valid campaign_id is required.")
+        days = min(max(int(days), 1), 90)
+        macro = f"LAST_{days}_DAYS" if days in {7, 14, 30, 90} else "LAST_30_DAYS"
+        query = f"""
+            SELECT campaign.id, campaign.name,
+                   ad_group.id, ad_group.name, ad_group.resource_name,
+                   ad_group_criterion.resource_name, ad_group_criterion.status,
+                   ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
+                   metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions
+            FROM keyword_view
+            WHERE campaign.id = {campaign_id}
+              AND segments.date DURING {macro}
+            ORDER BY metrics.impressions DESC
+            LIMIT 200
+        """.strip()
+        return await self.search(query)
+
     async def _mutate(self, service: str, operations: list[dict[str, Any]]) -> dict[str, Any]:
         customer_id = self._clean_customer_id(settings.google_ads_customer_id)
         data = await self.request(
@@ -117,6 +137,54 @@ class GoogleAdsClient:
             json={"operations": operations},
         )
         return data if isinstance(data, dict) else {"data": data}
+
+    @staticmethod
+    def _match_type(value: str) -> str:
+        normalized = str(value or "PHRASE").upper()
+        return normalized if normalized in {"EXACT", "PHRASE", "BROAD"} else "PHRASE"
+
+    async def add_keywords(
+        self,
+        ad_group_resource: str,
+        keywords: list[str],
+        match_type: str = "PHRASE",
+    ) -> dict[str, Any]:
+        words = [str(x).strip()[:80] for x in keywords if str(x).strip()]
+        if not ad_group_resource or not words:
+            raise GoogleAdsError("ad_group_resource and at least one keyword are required.")
+        operations = [
+            {
+                "create": {
+                    "adGroup": ad_group_resource,
+                    "status": "ENABLED",
+                    "keyword": {"text": word, "matchType": self._match_type(match_type)},
+                }
+            }
+            for word in words[:50]
+        ]
+        return await self._mutate("adGroupCriteria", operations)
+
+    async def remove_keyword(self, criterion_resource: str) -> dict[str, Any]:
+        if not criterion_resource:
+            raise GoogleAdsError("criterion_resource is required.")
+        return await self._mutate("adGroupCriteria", [{"remove": criterion_resource}])
+
+    async def replace_keyword(
+        self,
+        criterion_resource: str,
+        ad_group_resource: str,
+        new_keyword: str,
+        match_type: str = "PHRASE",
+    ) -> dict[str, Any]:
+        new_keyword = str(new_keyword).strip()
+        if not criterion_resource or not ad_group_resource or not new_keyword:
+            raise GoogleAdsError(
+                "criterion_resource, ad_group_resource and new_keyword are required."
+            )
+        # Google Ads keyword text is effectively immutable. Replace = remove old criterion + create new.
+        removed = await self.remove_keyword(criterion_resource)
+        created = await self.add_keywords(ad_group_resource, [new_keyword], match_type)
+        return {"removed": removed, "created": created}
 
     async def create_search_campaign(
         self,
@@ -193,20 +261,7 @@ class GoogleAdsClient:
         if not ad_group_resource:
             raise GoogleAdsError("Google Ads did not return an ad group resource name.")
 
-        normalized_match = match_type.upper()
-        if normalized_match not in {"EXACT", "PHRASE", "BROAD"}:
-            normalized_match = "PHRASE"
-        criteria = [
-            {
-                "create": {
-                    "adGroup": ad_group_resource,
-                    "status": "ENABLED",
-                    "keyword": {"text": keyword[:80], "matchType": normalized_match},
-                }
-            }
-            for keyword in keywords[:50]
-        ]
-        await self._mutate("adGroupCriteria", criteria)
+        await self.add_keywords(ad_group_resource, keywords, match_type)
 
         ad = await self._mutate(
             "adGroupAds",
