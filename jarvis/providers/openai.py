@@ -1,3 +1,5 @@
+import base64
+
 import httpx
 
 from jarvis.config import settings
@@ -46,6 +48,41 @@ class OpenAIProvider(LLMProvider):
     async def complete(self, system: str, user: str, *, temperature: float = 0.2) -> ModelReply:
         data = await self._responses(
             {"model": self.model, "instructions": system, "input": user}
+        )
+        return ModelReply(text=self._text(data), provider=self.name, model=self.model)
+
+    async def complete_vision(
+        self,
+        system: str,
+        user: str,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+    ) -> ModelReply:
+        """Analyze one bounded local Desktop Bridge frame through Responses API.
+
+        Frames remain server-side and are embedded as a data URL only for this model
+        request; no public screenshot URL is required.
+        """
+        if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+            raise ValueError("Unsupported image MIME type")
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        data = await self._responses(
+            {
+                "model": self.model,
+                "instructions": system,
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": user},
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:{mime_type};base64,{encoded}",
+                            },
+                        ],
+                    }
+                ],
+            }
         )
         return ModelReply(text=self._text(data), provider=self.name, model=self.model)
 

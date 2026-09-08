@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from jarvis.orchestrator import Orchestrator as CoreOrchestrator
-from jarvis.universal_collaboration_v2 import EnhancedUniversalCollaborationHub
+from jarvis.universal_collaboration_desktop import EnhancedUniversalCollaborationHub
 
 
 class UniversalOrchestrator(CoreOrchestrator):

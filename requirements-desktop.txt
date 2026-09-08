@@ -1,0 +1,4 @@
+# Install in the same venv as JARVIS when running the local Desktop Companion.
+websockets>=15.0
+mss>=10.0
+Pillow>=11.0

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from jarvis.desktop_actions import DesktopActionPlanner
 from jarvis.desktop_bridge import desktop_bridge
 from jarvis.integrations.google_content import google_content
 from jarvis.integrations.trello import trello
+from jarvis.router import ModelRouter
 from jarvis.schemas import RiskLevel
 from jarvis.tools.base import Tool
 
@@ -179,7 +181,10 @@ class DesktopInspectTool(Tool):
 
 class DesktopCommandTool(Tool):
     name = "desktop.command"
-    description = "Send one semantic edit/control command to a connected desktop application such as Blender or Photoshop."
+    description = (
+        "Send one approved semantic edit/control command to a connected desktop application. "
+        "Commands are translated to an allow-listed structured action before local execution."
+    )
     risk = RiskLevel.HIGH
     requires_approval = True
     mission_permission = "computer_control"
@@ -188,10 +193,23 @@ class DesktopCommandTool(Tool):
         client = desktop_bridge.find_app(app)
         if not client:
             raise RuntimeError(f"No connected Desktop Bridge client exposes {app}.")
+        snapshot = desktop_bridge.snapshot_for_app(app) or {}
+        planner = DesktopActionPlanner(ModelRouter())
+        plan = await planner.plan(
+            app,
+            instruction,
+            snapshot.get("state") if isinstance(snapshot.get("state"), dict) else {},
+        )
+        if plan.action == "unsupported":
+            raise RuntimeError(
+                plan.reason
+                or f"No safe structured write adapter is available for {app}."
+            )
         return await desktop_bridge.queue_command(
             client.client_id,
             app,
             instruction,
             mode="autonomous",
             approval_scope="mission_or_single_command",
+            plan=plan.to_dict(),
         )
