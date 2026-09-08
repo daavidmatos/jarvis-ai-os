@@ -6,6 +6,7 @@ from uuid import UUID
 from jarvis.fast_chat import FastChat
 from jarvis.internet_assistant import InternetAssistant
 from jarvis.missions import mission_store
+from jarvis.mobility_assistant import MobilityAssistant
 from jarvis.orchestrator import Orchestrator as CoreOrchestrator
 from jarvis.permissions import standing_permissions
 from jarvis.universal_collaboration_desktop import EnhancedUniversalCollaborationHub
@@ -18,8 +19,8 @@ class UniversalOrchestrator(CoreOrchestrator):
     Collaborative requests are routed before Mission mode. Explicit live-web requests
     bypass the generic planner and always invoke the search tool. Ordinary conversation
     skips the planner/agent DAG and uses a single primary-model call, while requests
-    needing other tools, local search, missions or external applications still use the
-    full orchestration stack.
+    needing other tools, local search, mobility, missions or external applications still
+    use the full orchestration stack.
     """
 
     def __init__(self, *args, **kwargs):
@@ -27,6 +28,7 @@ class UniversalOrchestrator(CoreOrchestrator):
         self.collaboration = EnhancedUniversalCollaborationHub(self.router, self.tools)
         self.fast_chat = FastChat(self.router, self.db)
         self.internet = InternetAssistant(self.router, self.tools, self.db)
+        self.mobility = MobilityAssistant(self.db)
 
     def _fast_chat_eligible(self, sid: UUID, message: str) -> bool:
         if mission_store.latest_for_session(str(sid), active_only=True):
@@ -39,6 +41,8 @@ class UniversalOrchestrator(CoreOrchestrator):
             return False
         if self.internet.looks_like_request(message):
             return False
+        if self.mobility.looks_like_request(message):
+            return False
 
         text = message.lower()
         tool_markers = (
@@ -49,6 +53,7 @@ class UniversalOrchestrator(CoreOrchestrator):
             "google docs", "documento", "arquivo", "github", "fuel", "cupom",
             "crie uma imagem", "gere uma imagem", "edite", "publique", "envie",
             "abra", "monitore", "monitorar", "automatize", "execute", "ifood",
+            "uber",
         )
         return not any(marker in text for marker in tool_markers)
 
@@ -78,6 +83,11 @@ class UniversalOrchestrator(CoreOrchestrator):
         sid = self.db.create_session(session_id)
         collaborative = await self.collaboration.handle_or_start(str(sid), message)
         if collaborative is None:
+            if self.mobility.looks_like_request(message):
+                self.db.add_message(sid, "user", message)
+                result = await self.mobility.handle(sid, message, location)
+                self.db.add_message(sid, "assistant", result["message"])
+                return result
             if self.internet.looks_like_request(message):
                 self.db.add_message(sid, "user", message)
                 context = self._conversation_context(sid, message, location)
