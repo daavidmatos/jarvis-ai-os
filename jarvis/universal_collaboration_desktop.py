@@ -6,15 +6,14 @@ from typing import Any
 from jarvis.desktop_actions import DesktopActionPlanner
 from jarvis.desktop_bridge import desktop_bridge
 from jarvis.desktop_frames import DesktopFrameError, desktop_frames
-from jarvis.universal_collaboration import (
-    UniversalCollaborationHub,
-    UniversalWorkspaceState,
-    universal_workspace_store,
+from jarvis.universal_collaboration import UniversalWorkspaceState, universal_workspace_store
+from jarvis.universal_collaboration_v2 import (
+    EnhancedUniversalCollaborationHub as CloudEnhancedUniversalCollaborationHub,
 )
 
 
-class EnhancedUniversalCollaborationHub(UniversalCollaborationHub):
-    """Universal Workbench with real Desktop Companion vision + Blender edits."""
+class EnhancedUniversalCollaborationHub(CloudEnhancedUniversalCollaborationHub):
+    """Universal Workbench with cloud collaboration + real Desktop Companion vision."""
 
     def __init__(self, router, tools):
         super().__init__(router, tools)
