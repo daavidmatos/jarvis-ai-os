@@ -35,6 +35,27 @@ def test_insufficient_quota_becomes_clear_api_error():
     assert exc.detail["upstream_code"] == "insufficient_quota"
 
 
+def test_credit_balance_exhausted_is_not_reported_as_rate_limit():
+    provider = OpenAIProvider()
+    exc = provider._provider_error(
+        _response(
+            429,
+            {
+                "error": {
+                    "code": "credit_balance_exhausted",
+                    "type": "insufficient_quota",
+                    "message": "Credit balance exhausted.",
+                }
+            },
+        )
+    )
+
+    assert exc.status_code == 429
+    assert exc.detail["upstream_code"] == "credit_balance_exhausted"
+    assert "saldo de créditos" in exc.detail["message"].lower()
+    assert "temporário de uso" not in exc.detail["message"].lower()
+
+
 def test_bad_request_is_sanitized_and_keeps_provider_context():
     provider = OpenAIProvider()
     exc = provider._provider_error(
