@@ -6,6 +6,7 @@ import asyncio
 from desktop_companion.client import DesktopCompanion
 from desktop_companion.config import CompanionConfig
 from desktop_companion.install import install_blender_addon
+from desktop_companion.service import install_user_service, remove_user_service
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -22,6 +23,8 @@ def _parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="Show local companion/Blender readiness")
     sub.add_parser("install-blender-addon", help="Install/update the bundled JARVIS Blender add-on")
+    sub.add_parser("install-service", help="Start Desktop Companion automatically on Linux login")
+    sub.add_parser("remove-service", help="Disable the Linux Desktop Companion service")
     return p
 
 
@@ -42,6 +45,16 @@ def main() -> None:
         for target in targets:
             print(f"Add-on instalado: {target}")
         print("Abra/reinicie o Blender e habilite 'JARVIS Desktop Bridge' em Preferences > Add-ons.")
+        return
+
+    if args.command == "install-service":
+        path = install_user_service(start=True)
+        print(f"Serviço instalado e iniciado: {path}")
+        return
+
+    if args.command == "remove-service":
+        remove_user_service()
+        print("Serviço do JARVIS Desktop Companion desativado.")
         return
 
     cfg = CompanionConfig.load()
