@@ -92,6 +92,12 @@ class OwnerAuth:
         try:
             padding = "=" * (-len(token) % 4)
             raw = base64.urlsafe_b64decode(token + padding)
+            # Python's permissive base64 decoder can accept non-canonical trailing
+            # characters that decode to the same bytes. Reject those aliases so a
+            # modified cookie can never verify as the original token.
+            canonical = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+            if not secrets.compare_digest(canonical, token):
+                return False
             payload, supplied_sig_hex = raw.rsplit(b".", 1)
             version, expires_text = payload.decode("utf-8").split(".", 1)
             if version != "v2":
