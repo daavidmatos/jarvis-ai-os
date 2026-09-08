@@ -10,6 +10,15 @@ class Settings(BaseSettings):
     # Public server address. Required for OAuth callbacks and push webhooks.
     public_base_url: str = "http://localhost:8000"
 
+    # Single-owner access gate for hosted deployments. Keep these only in host
+    # environment variables. If no dedicated session secret is supplied, the
+    # password is hashed into the signing key so sessions survive redeploys.
+    jarvis_access_password: str | None = None
+    jarvis_session_secret: str | None = None
+    jarvis_session_days: int = 30
+    jarvis_login_max_attempts: int = 8
+    jarvis_login_window_seconds: int = 900
+
     # OpenAI is the mandatory primary cognition layer.
     # Use the canonical API model ID here. The short `gpt-5.6` name is an alias,
     # while the Models retrieve endpoint validates canonical IDs.
