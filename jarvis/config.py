@@ -19,9 +19,8 @@ class Settings(BaseSettings):
     jarvis_login_max_attempts: int = 8
     jarvis_login_window_seconds: int = 900
 
-    # OpenAI is the mandatory primary cognition layer.
-    # Use the canonical API model ID here. The short `gpt-5.6` name is an alias,
-    # while the Models retrieve endpoint validates canonical IDs.
+    # OpenAI remains the intended primary cognition layer for normal production use.
+    # A different primary_provider can be selected temporarily for development/testing.
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6-sol"
     openai_image_model: str = "gpt-image-2"
@@ -31,7 +30,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-5"
     google_api_key: str | None = None
-    google_model: str = "gemini-3.8-flash"
+    # Flash-Lite is the safer default for temporary Free Tier testing because JARVIS
+    # can make multiple model calls per user turn (planner + agent + optional finalizer).
+    # Production deployments may override this with GOOGLE_MODEL.
+    google_model: str = "gemini-3.5-flash-lite"
 
     # Google Workspace OAuth. This is separate from the Gemini API key above.
     google_oauth_client_id: str | None = None

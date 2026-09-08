@@ -15,13 +15,16 @@ class Planner:
             if settings.allow_local_fallback: return self._fallback(message)
             raise
         if provider.name=="mock": return self._fallback(message)
+
+        # Provider/network/quota errors must stay visible to the user. Only malformed
+        # planner formatting should degrade to the deterministic local planner.
+        reply=await provider.complete(SYSTEM,f"User request:\n{message}\n\nContext:\n{context}")
         try:
-            reply=await provider.complete(SYSTEM,f"User request:\n{message}\n\nContext:\n{context}")
             raw=reply.text.strip(); match=re.search(r"\{.*\}",raw,re.S); data=json.loads(match.group(0) if match else raw)
             plan=ExecutionPlan.model_validate(data); plan.tasks=plan.tasks[:settings.max_plan_tasks]; return plan
         except Exception:
-            if settings.allow_local_fallback: return self._fallback(message)
-            raise
+            return self._fallback(message)
+
     def _fallback(self,message:str)->ExecutionPlan:
         l=message.lower()
         if any(k in l for k in ["pesquise","pesquisar","research","mercado","compare","últimas","latest"]): agent="research";action="research_and_synthesize";caps=["text","research"]
