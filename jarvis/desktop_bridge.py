@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from jarvis.desktop_frames import desktop_frames
+
 
 @dataclass
 class DesktopClient:
@@ -90,19 +92,31 @@ class DesktopBridge:
             client.state = payload["state"]
         client.connected = True
         client.last_seen = self._now()
+        if str(payload.get("type") or "") == "result" and payload.get("command_id"):
+            self.record_result(client_id, payload)
         return client
 
     def update_frame(self, client_id: str, payload: dict[str, Any]) -> DesktopClient:
         client = self.clients.get(client_id)
         if not client:
             client = self.register(client_id, str(payload.get("platform") or "unknown"))
+        frame_id = str(payload.get("frame_id") or uuid4())
+        mime_type = str(payload.get("mime_type") or "")
+        stored: dict[str, Any] = {}
+        if payload.get("data_b64"):
+            stored = desktop_frames.store(
+                client_id,
+                frame_id,
+                mime_type,
+                str(payload.get("data_b64")),
+            )
         client.last_frame = {
-            "frame_id": str(payload.get("frame_id") or uuid4()),
-            "mime_type": payload.get("mime_type"),
+            "frame_id": frame_id,
+            "mime_type": mime_type,
             "width": payload.get("width"),
             "height": payload.get("height"),
-            "storage_key": payload.get("storage_key"),
-            "bytes": payload.get("bytes"),
+            "storage_key": stored.get("storage_key") or payload.get("storage_key"),
+            "bytes": stored.get("bytes") or payload.get("bytes"),
             "captured_at": payload.get("captured_at") or self._now(),
         }
         client.connected = True
@@ -120,7 +134,7 @@ class DesktopBridge:
         }
         if command_id:
             self._results[command_id] = result
-            if len(self._results) > 500:
+            while len(self._results) > 500:
                 oldest = next(iter(self._results))
                 self._results.pop(oldest, None)
         client = self.clients.get(client_id)
@@ -185,6 +199,7 @@ class DesktopBridge:
         *,
         mode: str = "collaborative",
         approval_scope: str = "single_command",
+        plan: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         client = self.clients.get(client_id)
         if not client or not client.connected:
@@ -196,6 +211,7 @@ class DesktopBridge:
             "instruction": instruction,
             "mode": mode,
             "approval_scope": approval_scope,
+            "plan": plan,
             "created_at": self._now(),
         }
         queue = self._queues.setdefault(client_id, asyncio.Queue())
