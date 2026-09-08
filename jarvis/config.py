@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     gmail_pubsub_topic: str | None = None
     google_pubsub_webhook_secret: str | None = None
 
+    # Google Maps / Places for mobile local recommendations and navigation.
+    # Keep this server-side; it must never be exposed in browser JavaScript.
+    google_maps_api_key: str | None = None
+    places_default_radius_m: int = 5000
+    places_max_candidates: int = 5
+
     # Google Ads uses the same OAuth identity plus a developer token/customer IDs.
     google_ads_developer_token: str | None = None
     google_ads_customer_id: str | None = None
