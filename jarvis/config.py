@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./jarvis.db"
     redis_url: str = "redis://localhost:6379/0"
 
+    # Public server address. Required for OAuth callbacks and push webhooks.
+    public_base_url: str = "http://localhost:8000"
+
     # OpenAI is the mandatory primary cognition layer.
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6"
@@ -17,6 +20,16 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-5"
     google_api_key: str | None = None
     google_model: str = "gemini-3.8-flash"
+
+    # Google Workspace OAuth. This is separate from the Gemini API key above.
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: str | None = None
+    google_oauth_token_path: str = "~/.config/jarvis/google_oauth.json"
+    google_monitor_state_path: str = "~/.config/jarvis/google_monitor.json"
+    gmail_pubsub_topic: str | None = None
+    google_pubsub_webhook_secret: str | None = None
+    enable_google_monitoring: bool = True
+    google_monitor_interval_seconds: int = 43200
 
     # Optional dedicated search providers. OpenAI hosted web search remains available.
     tavily_api_key: str | None = None
