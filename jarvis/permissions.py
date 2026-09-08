@@ -20,6 +20,8 @@ class StandingPermission:
     allow_external_messages: bool = False
     allow_spend: bool = False
     allow_commerce: bool = False
+    allow_workspace_edits: bool = False
+    allow_computer_control: bool = False
     max_daily_spend: float | None = None
     max_total_spend: float | None = None
     currency: str = "BRL"
@@ -52,6 +54,14 @@ class StandingPermissionStore:
             pass
         os.replace(tmp, self.path)
 
+    @staticmethod
+    def _hydrate(row: dict[str, Any]) -> StandingPermission:
+        defaults = {
+            "allow_workspace_edits": False,
+            "allow_computer_control": False,
+        }
+        return StandingPermission(**{**defaults, **row})
+
     def create(
         self,
         name: str,
@@ -60,6 +70,8 @@ class StandingPermissionStore:
         allow_external_messages: bool = False,
         allow_spend: bool = False,
         allow_commerce: bool = False,
+        allow_workspace_edits: bool = False,
+        allow_computer_control: bool = False,
         max_daily_spend: float | None = None,
         max_total_spend: float | None = None,
         currency: str = "BRL",
@@ -72,6 +84,8 @@ class StandingPermissionStore:
             allow_external_messages=allow_external_messages,
             allow_spend=allow_spend,
             allow_commerce=allow_commerce,
+            allow_workspace_edits=allow_workspace_edits,
+            allow_computer_control=allow_computer_control,
             max_daily_spend=max_daily_spend,
             max_total_spend=max_total_spend,
             currency=currency,
@@ -83,7 +97,7 @@ class StandingPermissionStore:
         return permission
 
     def list(self, active_only: bool = False) -> list[StandingPermission]:
-        rows = [StandingPermission(**row) for row in self._read().values()]
+        rows = [self._hydrate(row) for row in self._read().values()]
         if active_only:
             rows = [row for row in rows if row.active]
         return sorted(rows, key=lambda x: x.created_at, reverse=True)
@@ -108,6 +122,8 @@ class StandingPermissionStore:
             "allow_external_messages": any(p.allow_external_messages for p in matches),
             "allow_spend": any(p.allow_spend for p in matches),
             "allow_commerce": any(p.allow_commerce for p in matches),
+            "allow_workspace_edits": any(p.allow_workspace_edits for p in matches),
+            "allow_computer_control": any(p.allow_computer_control for p in matches),
             "max_daily_spend": max(daily) if daily else None,
             "max_total_spend": max(total) if total else None,
             "permission_ids": [p.id for p in matches],
@@ -120,6 +136,7 @@ class StandingPermissionStore:
         return "\n".join(
             f"- {p.name}: channels={','.join(p.channels) or '*'}, publish={p.allow_publish}, "
             f"messages={p.allow_external_messages}, spend={p.allow_spend}, commerce={p.allow_commerce}, "
+            f"workspace_edits={p.allow_workspace_edits}, computer_control={p.allow_computer_control}, "
             f"daily_limit={p.max_daily_spend}, total_limit={p.max_total_spend} {p.currency}"
             for p in rows
         )
