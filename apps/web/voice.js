@@ -5,7 +5,8 @@
   const sendBtn = document.getElementById('send');
   const composer = document.querySelector('.composer');
   const actions = document.querySelector('.actions');
-  if (!inputEl || !sendBtn || !composer || !actions) return;
+  const messages = document.getElementById('messages');
+  if (!inputEl || !sendBtn || !composer || !actions || !messages) return;
 
   let voiceEnabled = localStorage.getItem('jarvis.voice.enabled') !== 'false';
   let voiceArmed = false;
@@ -46,6 +47,13 @@
       .trim();
   }
 
+  function userFacing(text) {
+    const clean = String(text || '').trim();
+    if (!clean || /^erro:/i.test(clean) || /processando|atualizando workbench/i.test(clean)) return clean;
+    if (/\bsenhor\b/i.test(clean)) return clean;
+    return `Senhor, ${clean}`;
+  }
+
   function speak(text) {
     if (!voiceEnabled || !voiceArmed || !synth) return;
     const clean = cleanForSpeech(text);
@@ -60,18 +68,24 @@
     synth.speak(utterance);
   }
 
-  if (synth) {
-    synth.addEventListener?.('voiceschanged', preferredVoice);
-  }
+  if (synth) synth.addEventListener?.('voiceschanged', preferredVoice);
 
-  const originalAdd = window.add;
-  if (typeof originalAdd === 'function') {
-    window.add = function(text, cls, meta = '', messageActions = []) {
-      const result = originalAdd(text, cls, meta, messageActions);
-      if (cls === 'a') speak(text);
-      return result;
-    };
-  }
+  // Observe every assistant bubble so tool, mission, local and collaborative replies
+  // get the same form of address and voice behavior, not only ordinary chat.
+  const observer = new MutationObserver(mutations => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof HTMLElement) || !node.classList.contains('a')) continue;
+        const body = node.firstElementChild;
+        if (!body) continue;
+        const original = body.textContent || '';
+        const styled = userFacing(original);
+        if (styled !== original) body.textContent = styled;
+        speak(styled);
+      }
+    }
+  });
+  observer.observe(messages, { childList: true });
 
   function setListening(on) {
     listening = on;
@@ -90,7 +104,7 @@
     voiceArmed = true;
     if (synth) synth.cancel();
     if (!SpeechRecognition) {
-      if (typeof window.add === 'function') window.add('Senhor, a transcrição de voz não está disponível neste navegador. No iPhone, abra o JARVIS diretamente no Safari e verifique se a Siri está ativada.', 'a');
+      if (typeof window.add === 'function') window.add('A transcrição de voz não está disponível neste navegador. No iPhone, abra o JARVIS diretamente no Safari e verifique se a Siri está ativada.', 'a');
       return;
     }
     if (listening && recognition) {
@@ -118,16 +132,13 @@
     };
     recognition.onerror = event => {
       setListening(false);
-      if (typeof window.add === 'function') window.add('Senhor, ' + recognitionErrorMessage(event.error), 'a');
+      if (typeof window.add === 'function') window.add(recognitionErrorMessage(event.error), 'a');
     };
     recognition.onend = () => {
       setListening(false);
       const text = inputEl.value.trim();
       if (text && finalText.trim()) {
-        setTimeout(() => {
-          if (typeof window.send === 'function') window.send();
-          else sendBtn.click();
-        }, 120);
+        setTimeout(() => sendBtn.click(), 120);
       }
     };
     try {
@@ -150,6 +161,6 @@
     if (e.key === 'Enter' && !e.shiftKey) voiceArmed = true;
   }, true);
 
-  // A first tap anywhere in the app authorizes later speech synthesis on mobile Safari.
+  // A first tap in the app unlocks later speech synthesis on mobile browsers.
   document.addEventListener('pointerdown', () => { voiceArmed = true; }, { once: true, capture: true });
 })();
