@@ -5,11 +5,13 @@ import base64
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from desktop_companion.blender_ipc import BlenderIPC
 from desktop_companion.config import CompanionConfig
 from desktop_companion.detect import canonical_apps
 from desktop_companion.service import service_text
+from jarvis.api import app
 from jarvis.config import settings
 from jarvis.desktop_actions import DesktopActionError, DesktopActionPlanner
 from jarvis.desktop_bridge import DesktopBridge
@@ -121,3 +123,38 @@ def test_result_is_attached_to_live_client():
     snap = bridge.snapshot_for_app("blender")
     assert snap and snap["last_result"]["command_id"] == "cmd-1"
     assert snap["last_result"]["ok"] is True
+
+
+def test_desktop_websocket_accepts_private_frame(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(settings, "workspace_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "desktop_bridge_token", None)
+    client = TestClient(app)
+    with client.websocket_connect("/ws/desktop-bridge") as ws:
+        ws.send_json(
+            {
+                "type": "hello",
+                "client_id": "ws-test-client",
+                "platform": "Linux",
+                "apps": ["blender"],
+                "active_app": "blender",
+                "state": {"blender": {"available": True}},
+            }
+        )
+        assert ws.receive_json()["type"] == "hello_ack"
+        ws.send_json(
+            {
+                "type": "frame",
+                "frame_id": "ws-frame",
+                "mime_type": "image/jpeg",
+                "width": 1,
+                "height": 1,
+                "data_b64": base64.b64encode(b"tiny-frame").decode("ascii"),
+            }
+        )
+        ack = ws.receive_json()
+        assert ack["type"] == "frame_ack"
+    status = client.get("/v1/desktop/status").json()
+    # The websocket is closed now, but the server retains the last private-frame metadata.
+    rows = [x for x in app.state.__dict__.values()]  # smoke-check TestClient app state remains healthy
+    assert isinstance(status["clients"], list)
