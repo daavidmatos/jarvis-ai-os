@@ -9,6 +9,7 @@ services:
       - "8000:8000"
     volumes:
       - ./workspace:/app/workspace
+      - jarvis_config:/root/.config/jarvis
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,3 +38,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  jarvis_config:
