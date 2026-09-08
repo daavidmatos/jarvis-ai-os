@@ -19,3 +19,21 @@ class NaturalVoiceTool(Tool):
             "audio_base64": base64.b64encode(audio).decode("ascii"),
             "voice": natural_voice.status(),
         }
+
+
+class VoiceTranscribeTool(Tool):
+    name = "voice.transcribe"
+    description = "Transcribe a short microphone recording into Brazilian Portuguese text."
+    risk = RiskLevel.LOW
+
+    async def run(self, audio_base64: str, mime_type: str = "audio/webm"):
+        try:
+            audio = base64.b64decode(audio_base64, validate=True)
+        except (ValueError, TypeError):
+            raise ValueError("Invalid base64 audio") from None
+        text = await natural_voice.transcribe(audio, mime_type)
+        return {
+            "text": text,
+            "language": "pt-BR",
+            "voice": natural_voice.status(),
+        }

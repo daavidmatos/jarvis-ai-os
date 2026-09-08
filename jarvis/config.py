@@ -35,10 +35,13 @@ class Settings(BaseSettings):
     # Production deployments may override this with GOOGLE_MODEL.
     google_model: str = "gemini-3.5-flash-lite"
 
-    # Natural voice. Gemini 3.1 Flash TTS currently has a Free Tier and lets JARVIS
-    # steer accent, cadence and delivery while keeping the API key server-side.
+    # Natural voice + microphone transcription. TTS uses the current Interactions API.
+    # STT intentionally uses the general low-latency multimodal model for short commands;
+    # it accepts inline audio and is a reliable fit for the temporary Free Tier stack.
     google_tts_model: str = "gemini-3.1-flash-tts-preview"
     google_tts_voice: str = "Gacrux"
+    google_stt_model: str = "gemini-3.5-flash-lite"
+    voice_max_audio_bytes: int = 8_000_000
 
     # Google Workspace OAuth. This is separate from the Gemini API key above.
     google_oauth_client_id: str | None = None

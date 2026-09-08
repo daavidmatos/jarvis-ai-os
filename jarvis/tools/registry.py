@@ -38,7 +38,7 @@ from jarvis.tools.marketing import (
     InstagramTaggedMediaTool,
 )
 from jarvis.tools.time import TimeTool
-from jarvis.tools.voice import NaturalVoiceTool
+from jarvis.tools.voice import NaturalVoiceTool, VoiceTranscribeTool
 from jarvis.tools.web import WebFetchTool, WebSearchTool
 from jarvis.tools.workspaces import (
     DesktopCommandTool,
@@ -70,6 +70,7 @@ class ToolRegistry:
             WebSearchTool(),
             TimeTool(),
             NaturalVoiceTool(),
+            VoiceTranscribeTool(),
             PlacesStatusTool(),
             PlacesSearchTool(),
             GoogleStatusTool(),
