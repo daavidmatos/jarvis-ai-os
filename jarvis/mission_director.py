@@ -36,8 +36,9 @@ Rules:
 - Research, analysis, drafting, asset generation, and reversible preparation should be autonomous.
 - If the user asked JARVIS to execute/publish/run a campaign, the proposal may request publish/external-message/commerce authority; the mission approval is the user's one-time authorization for that mission.
 - If the objective explicitly asks JARVIS to edit documents, spreadsheets, Trello/project boards, or similar connected workspaces autonomously, the proposal may request allow_workspace_edits=true.
-- If the objective explicitly asks JARVIS to operate desktop software such as Blender, Photoshop, Premiere, Illustrator or other computer applications autonomously, the proposal may request allow_computer_control=true. Never request it for simple inspection or collaboration.
-- Computer control still requires a connected Desktop Bridge and must stay within the approved mission objective.
+- If the objective explicitly asks JARVIS to create or edit inside desktop/editor software such as Blender, Figma, Photoshop, Illustrator, After Effects, Premiere or another connected creative application autonomously, the proposal may request allow_computer_control=true. Never request it for simple inspection or collaboration.
+- A broad creative objective such as "create a landing page in Figma" should not become a list of unnecessary questions. Choose sensible reversible defaults for layout, typography, spacing, composition, and visual hierarchy unless the user supplied constraints.
+- Computer control still requires a connected write-capable editor adapter/Desktop Bridge and must stay within the approved mission objective.
 - Paid advertising may request spend authority only when a numeric daily or total ceiling is known from the request, memory, or standing permissions. Otherwise budget is a blocker.
 - Never invent spend authority, computer-control authority, workspace-edit authority, or a budget.
 - Keep blockers minimal. Do not ask about details JARVIS can decide itself.
@@ -76,7 +77,8 @@ class MissionDirector:
             "execute", "executar", "crie uma campanha", "faça uma campanha",
             "google ads", "instagram", "marketing", "lançamento", "launch",
             "documento", "planilha", "trello", "blender", "photoshop",
-            "premiere", "illustrator", "adobe", "faça sozinho", "faca sozinho",
+            "premiere", "illustrator", "after effects", "after_effects", "figma",
+            "landing page", "mockup", "render", "adobe", "faça sozinho", "faca sozinho",
         ]
         return any(marker in text for marker in mission_markers)
 
