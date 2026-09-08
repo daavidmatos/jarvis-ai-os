@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#060b12">
+<title>JARVIS Workbench</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eaf2ff;background:#060b12}*{box-sizing:border-box}body{margin:0;min-height:100dvh;background:radial-gradient(circle at 50% -20%,#193b5a 0,#0a111a 36%,#05080d 72%)}.shell{max-width:1200px;margin:auto;padding:18px max(12px,env(safe-area-inset-left)) max(18px,env(safe-area-inset-bottom))}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.brand{letter-spacing:.24em;font-weight:800}.sub{font-size:11px;opacity:.58;margin-top:4px}.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(126,232,255,.18);border-radius:12px;padding:10px 12px;background:#102235;color:#dff8ff;text-decoration:none;font-size:11px;font-weight:700}.panel{background:rgba(9,18,29,.8);border:1px solid rgba(126,232,255,.18);border-radius:22px;backdrop-filter:blur(18px);box-shadow:0 24px 80px rgba(0,0,0,.35);padding:18px}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.pill{display:inline-flex;border:1px solid rgba(126,232,255,.2);border-radius:20px;padding:4px 8px;font-size:10px;opacity:.75}.status{font-size:11px;opacity:.65}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}.metric,.card,.section{background:#08121d;border:1px solid rgba(126,232,255,.11);border-radius:15px;padding:13px}.metric b{display:block;font-size:20px;margin-top:5px}.metric span,.label{font-size:10px;opacity:.58;text-transform:uppercase;letter-spacing:.08em}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card h3{margin:0 0 8px;font-size:14px}.row{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;opacity:.78}.chip{display:inline-flex;padding:7px 9px;border-radius:999px;background:#102235;border:1px solid rgba(126,232,255,.12);font-size:11px;margin:4px 4px 0 0}.section{margin-top:12px}.section h2{font-size:13px;margin:0 0 10px}.kv{display:grid;grid-template-columns:160px 1fr;gap:8px;font-size:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)}.kv:last-child{border-bottom:0}.note{margin-top:12px;padding:12px;border:1px solid rgba(255,197,126,.18);background:rgba(68,44,18,.22);border-radius:13px;font-size:12px;line-height:1.45}.frame{width:100%;max-height:62vh;object-fit:contain;border-radius:14px;background:#020509;border:1px solid rgba(126,232,255,.12)}pre{white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.45;opacity:.75;margin:0}.empty{padding:30px 10px;text-align:center;opacity:.62}.live{color:#8fffc7}.warn{color:#ffd08f}@media(max-width:720px){.shell{padding-top:10px}.panel{padding:12px;border-radius:18px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cards{grid-template-columns:1fr}.kv{grid-template-columns:1fr}.metric b{font-size:18px}.head{align-items:center}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="top"><div><div class="brand">JARVIS</div><div class="sub">UNIVERSAL WORKBENCH</div></div><a class="btn" href="/">VOLTAR AO CHAT</a></div>
+  <div class="panel">
+    <div id="root" class="empty">Carregando workspace…</div>
+  </div>
+</div>
+<script>
+const root=document.getElementById('root');
+const session=new URLSearchParams(location.search).get('session');
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+function n(v){const x=Number(v||0);return Number.isFinite(x)?x.toLocaleString('pt-BR',{maximumFractionDigits:2}):esc(v)}
+function money(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+function render(w){if(!w){root.className='empty';root.textContent='Nenhum workspace ativo para esta sessão.';return}const status=w.integration_state||w.status||'active';let html=`<div class="head"><div><span class="pill">${esc((w.kind||'workspace').toUpperCase())}</span><h1 style="font-size:20px;margin:9px 0 3px">${esc(w.title||'Workbench')}</h1><div class="status">${esc(w.target||'')} · <span class="${status==='connected'?'live':'warn'}">${esc(status)}</span></div></div><div class="status">atualização automática</div></div>`;
+if(w.metrics){const m=w.metrics;html+=`<div class="grid"><div class="metric"><span>Impressões</span><b>${n(m.impressions)}</b></div><div class="metric"><span>Cliques</span><b>${n(m.clicks)}</b></div><div class="metric"><span>CTR</span><b>${n(m.ctr_percent)}%</b></div><div class="metric"><span>Custo</span><b>${money(m.cost_brl)}</b></div></div>`}
+if(Array.isArray(w.campaigns)&&w.campaigns.length){html+=`<div class="section"><h2>CAMPANHAS</h2><div class="cards">${w.campaigns.map(c=>`<div class="card"><h3>${esc(c.name)}</h3><div class="row"><span>${esc(c.status)}</span><span>${n(c.clicks)} cliques</span><span>${money(c.cost_brl)}</span><span>${n(c.conversions)} conv.</span></div></div>`).join('')}</div></div>`}
+if(Array.isArray(w.keywords)&&w.keywords.length){html+=`<div class="section"><h2>PALAVRAS-CHAVE</h2>${w.keywords.map(k=>`<span class="chip">${esc(k.text||k)}${k.match_type?' · '+esc(k.match_type):''}</span>`).join('')}</div>`}
+if(w.draft&&Object.keys(w.draft).length){html+=`<div class="section"><h2>RASCUNHO</h2>${Object.entries(w.draft).map(([k,v])=>`<div class="kv"><span class="label">${esc(k)}</span><span>${esc(Array.isArray(v)?v.join(', '):(v??'—'))}</span></div>`).join('')}</div>`}
+const snap=w.snapshot||{};const frame=snap.frame||{};if(frame.object_url){html+=`<div class="section"><h2>VISUAL ATUAL</h2><img class="frame" src="${esc(frame.object_url)}" alt="Estado visual do aplicativo"></div>`}
+if(snap.active_app||snap.active_document){html+=`<div class="section"><h2>DESKTOP BRIDGE</h2><div class="kv"><span class="label">Aplicativo</span><span>${esc(snap.active_app||'—')}</span></div><div class="kv"><span class="label">Documento/Projeto</span><span>${esc(snap.active_document||'—')}</span></div></div>`}
+if(w.capabilities&&w.capabilities.length){html+=`<div class="section"><h2>CAPACIDADES</h2>${w.capabilities.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div>`}
+if(w.note)html+=`<div class="note">${esc(w.note)}</div>`;
+if(!w.metrics&&!w.campaigns&&!w.keywords&&!frame.object_url&&Object.keys(snap).length){html+=`<div class="section"><h2>ESTADO</h2><pre>${esc(JSON.stringify(snap,null,2))}</pre></div>`}
+root.className='';root.innerHTML=html}
+async function refresh(){if(!session){root.textContent='Sessão não informada.';return}try{const r=await fetch('/v1/workspaces/'+encodeURIComponent(session));if(r.status===404){render(null);return}const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');render(d.workspace||d)}catch(e){root.className='empty';root.textContent='Erro ao carregar workspace: '+e.message}}
+refresh();setInterval(refresh,2000);
+</script>
+</body>
+</html>

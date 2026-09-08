@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import secrets
@@ -11,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from jarvis.config import settings
+from jarvis.desktop_bridge import desktop_bridge
 from jarvis.events import ProactiveEventService
 from jarvis.google_workspace import GoogleWorkspaceError, google_workspace
 from jarvis.integrations.fuel import fuel_business
@@ -19,7 +21,7 @@ from jarvis.integrations.meta import instagram
 from jarvis.local_assistant import google_places
 from jarvis.missions import MissionStatus, mission_store
 from jarvis.monitoring import GoogleMonitoringService
-from jarvis.orchestrator import Orchestrator
+from jarvis.orchestrator_universal import UniversalOrchestrator as Orchestrator
 from jarvis.permissions import standing_permissions
 from jarvis.router import PrimaryAIUnavailable
 from jarvis.schemas import ApprovalDecision, ChatRequest, ChatResponse, RiskLevel
@@ -28,8 +30,8 @@ from jarvis.setup import setup_service
 
 app = FastAPI(
     title="JARVIS AI OS",
-    version="0.6.0",
-    description="OpenAI-first autonomous personal AI orchestration, missions and mobile assistant",
+    version="0.7.0",
+    description="OpenAI-first autonomous and collaborative personal AI operating system",
 )
 jarvis = Orchestrator()
 events = ProactiveEventService(jarvis.db)
@@ -54,17 +56,22 @@ def setup_status_payload():
     specialists = [m for m in catalog if m["role"] == "specialist"]
     return {
         "ready": bool(primary and primary["available"]),
-        "version": "0.6.0",
+        "version": "0.7.0",
         "primary": primary,
         "specialists": specialists,
         "autonomous_routing": settings.autonomous_routing,
         "autonomy_enabled": settings.enable_autonomy,
-        "autonomy_scope": "mission_envelopes_plus_low_and_medium_risk_tools",
+        "autonomy_scope": "mission_envelopes_plus_collaborative_workspaces",
         "google_workspace": google_workspace.status(),
         "places": google_places.status(),
         "instagram": instagram.status(),
         "google_ads": google_ads.status(),
         "fuel": fuel_business.status(),
+        "desktop_bridge": desktop_bridge.status(),
+        "collaboration": {
+            "mode": "universal_workbench",
+            "catalog": jarvis.collaboration.capability_catalog(),
+        },
     }
 
 
@@ -73,11 +80,12 @@ def health():
     status = setup_status_payload()
     return {
         "status": "ok",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "ready": status["ready"],
         "primary_provider": "openai",
         "google_connected": status["google_workspace"]["connected"],
         "places_configured": status["places"]["configured"],
+        "desktop_bridge_connected": status["desktop_bridge"]["connected"],
     }
 
 
@@ -219,6 +227,7 @@ def integrations_status():
         "google_ads": google_ads.status(),
         "instagram": instagram.status(),
         "fuel": fuel_business.status(),
+        "desktop_bridge": desktop_bridge.status(),
     }
 
 
@@ -272,6 +281,91 @@ def acknowledge_event(event_id: str):
     if not events.acknowledge(event_id):
         raise HTTPException(404, "Event not found")
     return {"id": event_id, "status": "acknowledged"}
+
+
+# ---------------------------------------------------------------------------
+# Universal collaborative workspaces + desktop bridge
+# ---------------------------------------------------------------------------
+
+
+@app.get("/v1/workspaces")
+def workspaces():
+    return {
+        "workspaces": jarvis.collaboration.list_workspaces(),
+        "catalog": jarvis.collaboration.capability_catalog(),
+    }
+
+
+@app.get("/v1/workspaces/{session_id}")
+def workspace_get(session_id: str):
+    workspace = jarvis.collaboration.get_workspace(session_id)
+    if not workspace:
+        raise HTTPException(404, "Workspace not found")
+    return {"workspace": workspace}
+
+
+@app.get("/v1/desktop/status")
+def desktop_status():
+    return desktop_bridge.status()
+
+
+@app.websocket("/ws/desktop-bridge")
+async def desktop_bridge_ws(ws: WebSocket, token: str | None = None):
+    expected = settings.desktop_bridge_token
+    if expected and (not token or not secrets.compare_digest(token, expected)):
+        await ws.close(code=4403)
+        return
+    if settings.app_env != "development" and not expected:
+        # Never expose unauthenticated computer-control transport in hosted mode.
+        await ws.close(code=4403)
+        return
+
+    await ws.accept()
+    client_id: str | None = None
+    try:
+        hello = await asyncio.wait_for(ws.receive_json(), timeout=10)
+        if hello.get("type") != "hello" or not hello.get("client_id"):
+            await ws.send_json({"type": "error", "message": "hello with client_id is required"})
+            await ws.close(code=4400)
+            return
+        client_id = str(hello["client_id"])
+        client = desktop_bridge.register(
+            client_id,
+            str(hello.get("platform") or "unknown"),
+            apps=[str(x) for x in hello.get("apps", [])],
+            active_app=hello.get("active_app"),
+            active_document=hello.get("active_document"),
+            state=hello.get("state") if isinstance(hello.get("state"), dict) else {},
+        )
+        await ws.send_json({"type": "hello_ack", "client_id": client.client_id})
+
+        while True:
+            try:
+                data = await asyncio.wait_for(ws.receive_json(), timeout=0.75)
+                kind = str(data.get("type") or "")
+                if kind == "state":
+                    desktop_bridge.update_state(client_id, data)
+                    await ws.send_json({"type": "state_ack"})
+                elif kind == "frame":
+                    desktop_bridge.update_frame(client_id, data)
+                    await ws.send_json({"type": "frame_ack", "frame_id": data.get("frame_id")})
+                elif kind == "result":
+                    if isinstance(data.get("state"), dict):
+                        desktop_bridge.update_state(client_id, data)
+                    await ws.send_json({"type": "result_ack", "command_id": data.get("command_id")})
+                elif kind == "ping":
+                    await ws.send_json({"type": "pong"})
+            except asyncio.TimeoutError:
+                pass
+
+            command = await desktop_bridge.next_command(client_id, timeout=0.01)
+            if command:
+                await ws.send_json(command)
+    except (WebSocketDisconnect, asyncio.TimeoutError):
+        pass
+    finally:
+        if client_id:
+            desktop_bridge.disconnect(client_id)
 
 
 # ---------------------------------------------------------------------------
