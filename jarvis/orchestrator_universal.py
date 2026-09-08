@@ -4,6 +4,7 @@ import json
 from uuid import UUID
 
 from jarvis.fast_chat import FastChat
+from jarvis.internet_assistant import InternetAssistant
 from jarvis.missions import mission_store
 from jarvis.orchestrator import Orchestrator as CoreOrchestrator
 from jarvis.permissions import standing_permissions
@@ -12,11 +13,12 @@ from jarvis.voice_persona import ensure_senhor
 
 
 class UniversalOrchestrator(CoreOrchestrator):
-    """Core orchestrator with collaboration and low-latency chat routing.
+    """Core orchestrator with collaboration, live internet and low-latency chat routing.
 
-    Collaborative requests are routed before Mission mode. Ordinary conversation
+    Collaborative requests are routed before Mission mode. Explicit live-web requests
+    bypass the generic planner and always invoke the search tool. Ordinary conversation
     skips the planner/agent DAG and uses a single primary-model call, while requests
-    that need tools, local search, missions or external applications still use the
+    needing other tools, local search, missions or external applications still use the
     full orchestration stack.
     """
 
@@ -24,6 +26,7 @@ class UniversalOrchestrator(CoreOrchestrator):
         super().__init__(*args, **kwargs)
         self.collaboration = EnhancedUniversalCollaborationHub(self.router, self.tools)
         self.fast_chat = FastChat(self.router, self.db)
+        self.internet = InternetAssistant(self.router, self.tools, self.db)
 
     def _fast_chat_eligible(self, sid: UUID, message: str) -> bool:
         if mission_store.latest_for_session(str(sid), active_only=True):
@@ -34,6 +37,8 @@ class UniversalOrchestrator(CoreOrchestrator):
             return False
         if self.mission_director.looks_like_mission(message):
             return False
+        if self.internet.looks_like_request(message):
+            return False
 
         text = message.lower()
         tool_markers = (
@@ -43,7 +48,7 @@ class UniversalOrchestrator(CoreOrchestrator):
             "illustrator", "after effects", "premiere", "planilha", "google sheets",
             "google docs", "documento", "arquivo", "github", "fuel", "cupom",
             "crie uma imagem", "gere uma imagem", "edite", "publique", "envie",
-            "abra", "monitore", "monitorar", "automatize", "execute",
+            "abra", "monitore", "monitorar", "automatize", "execute", "ifood",
         )
         return not any(marker in text for marker in tool_markers)
 
@@ -73,6 +78,12 @@ class UniversalOrchestrator(CoreOrchestrator):
         sid = self.db.create_session(session_id)
         collaborative = await self.collaboration.handle_or_start(str(sid), message)
         if collaborative is None:
+            if self.internet.looks_like_request(message):
+                self.db.add_message(sid, "user", message)
+                context = self._conversation_context(sid, message, location)
+                result = await self.internet.research(sid, message, context)
+                self.db.add_message(sid, "assistant", result["message"])
+                return result
             if self._fast_chat_eligible(sid, message):
                 self.db.add_message(sid, "user", message)
                 context = self._conversation_context(sid, message, location)
