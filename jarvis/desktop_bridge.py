@@ -16,6 +16,7 @@ class DesktopClient:
     active_document: str | None = None
     state: dict[str, Any] = field(default_factory=dict)
     last_frame: dict[str, Any] | None = None
+    last_result: dict[str, Any] | None = None
     connected: bool = True
     last_seen: str = ""
 
@@ -23,16 +24,16 @@ class DesktopClient:
 class DesktopBridge:
     """Server-side half of the JARVIS Desktop Bridge.
 
-    The cloud JARVIS cannot inspect or control local desktop applications by itself.
-    A local companion connects over the authenticated WebSocket endpoint, reports
-    application state/screen frames and receives semantic commands. This class
-    deliberately stores metadata/state only; a production companion should stream
-    images through short-lived object storage rather than persistent JSON memory.
+    The cloud JARVIS cannot inspect/control local desktop applications by itself.
+    An authenticated local companion reports state/private screen frames and receives
+    semantic commands. Structured action planning and local adapters enforce a second
+    boundary before an edit reaches an application such as Blender.
     """
 
     def __init__(self):
         self.clients: dict[str, DesktopClient] = {}
         self._queues: dict[str, asyncio.Queue] = {}
+        self._results: dict[str, dict[str, Any]] = {}
 
     @staticmethod
     def _now() -> str:
@@ -51,6 +52,7 @@ class DesktopBridge:
         active_document: str | None = None,
         state: dict[str, Any] | None = None,
     ) -> DesktopClient:
+        previous = self.clients.get(client_id)
         client = DesktopClient(
             client_id=client_id,
             platform=platform,
@@ -58,6 +60,8 @@ class DesktopBridge:
             active_app=self._norm(active_app) if active_app else None,
             active_document=active_document,
             state=state or {},
+            last_frame=previous.last_frame if previous else None,
+            last_result=previous.last_result if previous else None,
             connected=True,
             last_seen=self._now(),
         )
@@ -78,9 +82,10 @@ class DesktopBridge:
         if isinstance(payload.get("apps"), list):
             client.apps = [self._norm(str(x)) for x in payload["apps"]]
         if payload.get("active_app") is not None:
-            client.active_app = self._norm(str(payload.get("active_app")))
+            value = str(payload.get("active_app") or "").strip()
+            client.active_app = self._norm(value) if value else None
         if payload.get("active_document") is not None:
-            client.active_document = str(payload.get("active_document"))
+            client.active_document = str(payload.get("active_document") or "") or None
         if isinstance(payload.get("state"), dict):
             client.state = payload["state"]
         client.connected = True
@@ -96,12 +101,36 @@ class DesktopBridge:
             "mime_type": payload.get("mime_type"),
             "width": payload.get("width"),
             "height": payload.get("height"),
-            "object_url": payload.get("object_url"),
+            "storage_key": payload.get("storage_key"),
+            "bytes": payload.get("bytes"),
             "captured_at": payload.get("captured_at") or self._now(),
         }
         client.connected = True
         client.last_seen = self._now()
         return client
+
+    def record_result(self, client_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        command_id = str(payload.get("command_id") or "")
+        result = {
+            "command_id": command_id,
+            "ok": bool(payload.get("ok")),
+            "result": payload.get("result") if isinstance(payload.get("result"), dict) else {},
+            "error": payload.get("error"),
+            "finished_at": self._now(),
+        }
+        if command_id:
+            self._results[command_id] = result
+            if len(self._results) > 500:
+                oldest = next(iter(self._results))
+                self._results.pop(oldest, None)
+        client = self.clients.get(client_id)
+        if client:
+            client.last_result = result
+            client.last_seen = self._now()
+        return result
+
+    def command_result(self, command_id: str) -> dict[str, Any] | None:
+        return self._results.get(str(command_id))
 
     def status(self) -> dict[str, Any]:
         connected = [c for c in self.clients.values() if c.connected]
@@ -119,6 +148,7 @@ class DesktopBridge:
             "premiere": {"premiere", "premiere_pro", "adobe_premiere_pro"},
             "after_effects": {"after_effects", "adobe_after_effects"},
             "blender": {"blender"},
+            "figma": {"figma"},
             "trello": {"trello"},
         }
         wanted_set = aliases.get(wanted, {wanted})
@@ -143,6 +173,7 @@ class DesktopBridge:
             "active_document": client.active_document,
             "state": client.state,
             "frame": client.last_frame,
+            "last_result": client.last_result,
             "last_seen": client.last_seen,
         }
 
