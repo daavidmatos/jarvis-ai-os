@@ -24,6 +24,8 @@ class BrowserAssistant:
             "abra o navegador", "abre o navegador", "abrir o navegador",
             "abra uma guia", "abre uma guia", "abra uma aba", "abre uma aba",
             "abra no google", "abre no google", "abrir no google",
+            "abra o google", "abre o google", "abrir o google",
+            "abra google", "abre google", "abrir google",
         )
         google_visual = (
             "pesquise aqui no google", "pesquisa aqui no google",
@@ -31,10 +33,18 @@ class BrowserAssistant:
             "busque no google", "quero ver o resultado no google",
             "quero ver os resultados no google", "mostre no google",
         )
+        google_chain = bool(
+            re.search(
+                r"\b(?:abra|abre|abrir)\s+(?:o\s+)?google\b.*\b(?:pesquise|pesquisa|procure|busque|buscar|pesquisar)\b",
+                text,
+                re.I,
+            )
+        )
         return (
             any(x in text for x in tab_markers)
             or any(x in text for x in browser_markers)
             or any(x in text for x in google_visual)
+            or google_chain
         )
 
     @staticmethod
@@ -47,16 +57,28 @@ class BrowserAssistant:
             text,
             flags=re.I,
         )
-        patterns = (
+        # Prefer the explicit search clause wherever it appears. This correctly handles
+        # natural commands such as "Abra o Google e pesquise por televisões" instead
+        # of treating "Google e pesquise..." as the query.
+        search_match = re.search(
             r"(?:pesquise|pesquisa|pesquisar|procure|buscar|busque)\s+(?:aqui\s+)?(?:no\s+google\s+)?(?:por\s+)?(.+)$",
-            r"(?:abra|abre|abrir)\s+(?:no\s+google\s+)?(?:uma\s+busca\s+por\s+)?(.+)$",
+            text,
+            re.I,
         )
-        for pattern in patterns:
-            match = re.search(pattern, text, re.I)
-            if match:
-                query = match.group(1).strip(" .,!?:;\"'")
-                if query and query.lower() not in {"o navegador", "uma guia", "uma aba", "google"}:
-                    return query
+        if search_match:
+            query = search_match.group(1).strip(" .,!?:;\"'")
+            if query:
+                return query
+
+        open_search = re.search(
+            r"(?:abra|abre|abrir)\s+(?:o\s+)?google\s+(?:e\s+)?(?:uma\s+busca\s+)?(?:por\s+)?(.+)$",
+            text,
+            re.I,
+        )
+        if open_search:
+            query = open_search.group(1).strip(" .,!?:;\"'")
+            if query and query.lower() not in {"google", "o google"}:
+                return query
         return None
 
     @classmethod
@@ -76,13 +98,14 @@ class BrowserAssistant:
         if query:
             text = ensure_senhor(f"Abrindo o Google e pesquisando por {query}.")
         else:
-            text = ensure_senhor("Abrindo uma nova guia no navegador.")
+            text = ensure_senhor("Abrindo o Google no navegador.")
         actions = [
             {
                 "type": "open_url",
                 "label": "ABRIR GOOGLE" if query else "ABRIR GUIA",
                 "url": url,
                 "auto": True,
+                "same_tab_fallback": True,
             }
         ]
         self.db.finish_workflow(wid, "completed", {"message": text, "url": url, "query": query})

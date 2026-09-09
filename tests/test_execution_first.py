@@ -13,6 +13,15 @@ def test_browser_routes_google_visual_search():
     assert "tipos de manteiga" in query.lower()
 
 
+def test_browser_routes_open_google_and_search_chain():
+    text = "Abra o Google e pesquise por televisões"
+    assert BrowserAssistant.looks_like_request(text)
+    url, query = BrowserAssistant._target_url(text)
+    assert query == "televisões"
+    assert "google.com/search" in url
+    assert "televis" in url.lower()
+
+
 def test_ifood_request_is_operational():
     assert CommerceAssistant.looks_like_request("Faça um pedido pra mim no iFood na Pizzaria do Rão")
 
