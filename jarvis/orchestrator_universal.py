@@ -5,6 +5,7 @@ from uuid import UUID
 
 from jarvis.browser_assistant import BrowserAssistant
 from jarvis.commerce_assistant import CommerceAssistant
+from jarvis.content_assistant import ContentAssistant
 from jarvis.fast_chat import FastChat
 from jarvis.internet_assistant import InternetAssistant
 from jarvis.local_assistant import LocalAssistantError, google_places
@@ -31,6 +32,7 @@ class UniversalOrchestrator(CoreOrchestrator):
         self.mobility = MobilityAssistant(self.db)
         self.browser = BrowserAssistant(self.db)
         self.commerce = CommerceAssistant(self.db)
+        self.content = ContentAssistant(self.router, self.db)
 
     @staticmethod
     def _mission_followup_like(message: str) -> bool:
@@ -67,6 +69,8 @@ class UniversalOrchestrator(CoreOrchestrator):
         if self.browser.looks_like_request(message):
             return False
         if self.commerce.looks_like_request(message):
+            return False
+        if self.content.looks_like_request(message):
             return False
 
         text = message.lower()
@@ -128,6 +132,9 @@ class UniversalOrchestrator(CoreOrchestrator):
 
         if self.commerce.looks_like_request(message):
             return await self._record_direct(sid, message, await self.commerce.handle(sid, message, location))
+
+        if self.content.looks_like_request(message):
+            return await self._record_direct(sid, message, await self.content.handle(sid, message))
 
         if self.browser.looks_like_request(message):
             return await self._record_direct(sid, message, await self.browser.handle(sid, message))
