@@ -7,43 +7,31 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./jarvis.db"
     redis_url: str = "redis://localhost:6379/0"
 
-    # Public server address. Required for OAuth callbacks and push webhooks.
     public_base_url: str = "http://localhost:8000"
 
-    # Single-owner access gate for hosted deployments. Keep these only in host
-    # environment variables. If no dedicated session secret is supplied, the
-    # password is hashed into the signing key so sessions survive redeploys.
     jarvis_access_password: str | None = None
     jarvis_session_secret: str | None = None
     jarvis_session_days: int = 30
     jarvis_login_max_attempts: int = 8
     jarvis_login_window_seconds: int = 900
 
-    # OpenAI remains the intended primary cognition layer for normal production use.
-    # A different primary_provider can be selected temporarily for development/testing.
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6-sol"
     openai_image_model: str = "gpt-image-2"
     primary_provider: str = "openai"
 
-    # Optional specialist providers. The router may delegate automatically.
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-5"
     google_api_key: str | None = None
-    # Flash-Lite is the safer default for temporary Free Tier testing because JARVIS
-    # can make multiple model calls per user turn (planner + agent + optional finalizer).
-    # Production deployments may override this with GOOGLE_MODEL.
-    google_model: str = "gemini-3.5-flash-lite"
+    # Temporary free core: use the stronger Flash model for judgment/tool routing.
+    # Audio transcription remains on Flash-Lite below to keep short voice turns cheap/fast.
+    google_model: str = "gemini-3.6-flash"
 
-    # Natural voice + microphone transcription. TTS uses the current Interactions API.
-    # STT intentionally uses the general low-latency multimodal model for short commands;
-    # it accepts inline audio and is a reliable fit for the temporary Free Tier stack.
     google_tts_model: str = "gemini-3.1-flash-tts-preview"
     google_tts_voice: str = "Gacrux"
     google_stt_model: str = "gemini-3.5-flash-lite"
     voice_max_audio_bytes: int = 8_000_000
 
-    # Google Workspace OAuth. This is separate from the Gemini API key above.
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None
     google_oauth_token_path: str = "~/.config/jarvis/google_oauth.json"
@@ -53,46 +41,44 @@ class Settings(BaseSettings):
     enable_google_monitoring: bool = True
     google_monitor_interval_seconds: int = 3600
 
-    # Google Maps / Places for mobile local recommendations and navigation.
-    # Keep this server-side; it must never be exposed in browser JavaScript.
     google_maps_api_key: str | None = None
     places_default_radius_m: int = 5000
     places_max_candidates: int = 5
 
-    # Google Ads uses the same OAuth identity plus a developer token/customer IDs.
     google_ads_developer_token: str | None = None
     google_ads_customer_id: str | None = None
     google_ads_login_customer_id: str | None = None
     google_ads_api_version: str = "v25"
 
-    # Meta / Instagram Graph API.
     meta_graph_version: str = "v24.0"
     meta_access_token: str | None = None
     meta_instagram_user_id: str | None = None
     meta_app_secret: str | None = None
     meta_webhook_verify_token: str | None = None
 
-    # Optional Fuel business API contract. The Lovable app can expose these endpoints later.
     fuel_api_base_url: str | None = None
     fuel_api_token: str | None = None
     fuel_webhook_secret: str | None = None
 
-    # Universal collaboration connectors.
     trello_api_key: str | None = None
     trello_token: str | None = None
 
-    # Shared secret used by the local JARVIS Desktop Companion. Hosted deployments
-    # must set this. Visual frames are size-bounded and only a tiny rolling window
-    # is retained server-side for multimodal inspection.
     desktop_bridge_token: str | None = None
     desktop_frame_max_bytes: int = 3_000_000
     desktop_frame_retention: int = 2
 
-    # Optional dedicated search providers. OpenAI hosted web search remains available.
     tavily_api_key: str | None = None
     serper_api_key: str | None = None
 
-    # One-time local credential store. Environment variables still override stored keys.
+    # Real browser execution layer. Browserless Free can be used for testing.
+    # The agent is only allowed to PREPARE commerce flows by default; final purchases
+    # and bookings remain user-confirmed in the external service.
+    browserless_api_token: str | None = None
+    browserless_base_url: str = "https://production-sfo.browserless.io"
+    browserless_ifood_profile: str | None = None
+    browserless_default_timeout_ms: int = 90000
+    browserless_max_steps: int = 24
+
     secrets_path: str = "~/.config/jarvis/secrets.json"
 
     autonomous_routing: bool = True
